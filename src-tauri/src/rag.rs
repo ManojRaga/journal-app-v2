@@ -137,6 +137,7 @@ impl RagPipeline {
     pub async fn index_entry(&mut self, entry: &JournalEntry) -> Result<()> {
         // Create text chunks for the entry
         let chunks = self.db.create_text_chunks(&entry.id, &entry.user_id, &entry.body).await?;
+        let chunk_count = chunks.len();
 
         // Generate embeddings for each chunk (placeholder)
         for chunk in chunks {
@@ -146,7 +147,7 @@ impl RagPipeline {
             log::debug!("Generated embedding for chunk {} (length: {})", chunk.id, chunk.text.len());
         }
 
-        log::info!("Indexed entry {} with {} chunks", entry.id, chunks.len());
+        log::info!("Indexed entry {} with {} chunks", entry.id, chunk_count);
         Ok(())
     }
 

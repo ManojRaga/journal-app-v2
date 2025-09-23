@@ -287,31 +287,31 @@ impl Database {
         let mut query_parts = vec!["UPDATE entries SET updated_at = ?"];
         let now_string = now.to_rfc3339();
         let mut bind_values: Vec<String> = vec![now_string];
-        let mut has_updates = false;
+        let mut _has_updates = false;
 
         if let Some(ref title) = request.title {
             query_parts.push("title = ?");
             bind_values.push(title.clone());
-            has_updates = true;
+            _has_updates = true;
         }
 
         if let Some(ref body) = request.body {
             query_parts.push("body = ?");
             bind_values.push(body.clone());
-            has_updates = true;
+            _has_updates = true;
         }
 
         if let Some(ref mood) = request.mood {
             query_parts.push("mood = ?");
             bind_values.push(mood.clone());
-            has_updates = true;
+            _has_updates = true;
         }
 
         let tags_json = request.tags.as_ref().map(|t| serde_json::to_string(t).unwrap());
         if let Some(ref tags_str) = tags_json {
             query_parts.push("tags = ?");
             bind_values.push(tags_str.clone());
-            has_updates = true;
+            _has_updates = true;
         }
 
         query_parts.push("WHERE id = ?");
