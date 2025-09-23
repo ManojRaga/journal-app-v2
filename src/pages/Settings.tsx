@@ -266,6 +266,19 @@ export function Settings() {
     }
   };
 
+  const handleLoadBundled = async () => {
+    setModelStatus('loading');
+    setModelError(null);
+    try {
+      await (window as any).__TAURI_INVOKE__?.('load_bundled_llm_model') || systemApi.loadLlmModel('');
+      // The backend stores the path; success indicates bundled model is found
+      setModelStatus('loaded');
+    } catch (e: any) {
+      setModelStatus('error');
+      setModelError(e?.message || 'No bundled model found');
+    }
+  };
+
   const renderAiSettings = () => (
     <div className="space-y-6">
       <div>
@@ -288,6 +301,13 @@ export function Settings() {
               className="btn-primary disabled:opacity-50"
             >
               {modelStatus === 'loading' ? 'Loading…' : 'Load Model'}
+            </button>
+            <button
+              onClick={handleLoadBundled}
+              disabled={modelStatus === 'loading'}
+              className="btn-secondary disabled:opacity-50"
+            >
+              Use Bundled Model
             </button>
             {modelStatus === 'loaded' && (
               <span className="text-sm text-green-600 dark:text-green-400">Model loaded successfully.</span>

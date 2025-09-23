@@ -68,6 +68,39 @@ async fn load_llm_model(state: State<'_, AppState>, model_path: String) -> Resul
 }
 
 #[tauri::command]
+async fn load_bundled_llm_model(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    // Look for a GGUF model under the app's bundled resources in models/
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let models_dir = resource_dir.join("models");
+
+    if !models_dir.exists() {
+        return Err("No bundled models found (missing resources/models).".to_string());
+    }
+
+    // Pick the first .gguf file
+    let mut found: Option<String> = None;
+    if let Ok(entries) = std::fs::read_dir(models_dir.clone()) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext == "gguf" {
+                    found = Some(path.to_string_lossy().to_string());
+                    break;
+                }
+            }
+        }
+    }
+
+    let model_path = found.ok_or("No .gguf model found in bundled resources/models".to_string())?;
+
+    *state.model_path.lock().unwrap() = Some(model_path.clone());
+    *state.llm_ready.lock().unwrap() = true;
+
+    log::info!("Bundled LLM model set: {}", model_path);
+    Ok(())
+}
+
+#[tauri::command]
 async fn create_entry(state: State<'_, AppState>, request: CreateEntryRequest) -> Result<JournalEntry, String> {
     let db = {
         let db_guard = state.db.lock().unwrap();
