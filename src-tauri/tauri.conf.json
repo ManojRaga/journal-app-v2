@@ -13,12 +13,18 @@
     "windows": [
       {
         "title": "AI Journal",
-        "width": 800,
-        "height": 600,
+        "width": 1200,
+        "height": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "center": true,
+        "focus": true,
+        "visible": true
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null
     }

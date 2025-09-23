@@ -16,6 +16,8 @@ pub struct AppState {
     db: Mutex<Option<Database>>,
     llm_ready: Mutex<bool>,
     model_path: Mutex<Option<String>>,
+    // Persist the current user's id so DB operations use a valid foreign key
+    user_id: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -24,6 +26,7 @@ impl AppState {
             db: Mutex::new(None),
             llm_ready: Mutex::new(false),
             model_path: Mutex::new(None),
+            user_id: Mutex::new(None),
         }
     }
 }
@@ -39,11 +42,12 @@ async fn initialize_database(state: State<'_, AppState>, app: AppHandle) -> Resu
     let database = Database::new(&db_url).await.map_err(|e| e.to_string())?;
 
     // Create default user if none exists
-    let user_id = database.create_user("default@journal.app").await.unwrap_or_else(|_| "default".to_string());
+    let user_id = database.get_or_create_user("default@journal.app").await.map_err(|e| e.to_string())?;
     log::info!("Default user ID: {}", user_id);
 
     // Store database in global state
     *state.db.lock().unwrap() = Some(database);
+    *state.user_id.lock().unwrap() = Some(user_id);
 
     Ok(())
 }
@@ -70,7 +74,15 @@ async fn create_entry(state: State<'_, AppState>, request: CreateEntryRequest) -
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
     };
 
-    let entry = db.create_entry("default", request).await.map_err(|e| e.to_string())?;
+    let user_id = state
+        .user_id
+        .lock()
+        .unwrap()
+        .as_ref()
+        .cloned()
+        .ok_or("User not initialized")?;
+
+    let entry = db.create_entry(&user_id, request).await.map_err(|e| e.to_string())?;
 
     // TODO: Index the entry for RAG when we implement thread-safe LLM handling
 
@@ -84,7 +96,15 @@ async fn get_entries(state: State<'_, AppState>) -> Result<Vec<JournalEntry>, St
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
     };
 
-    let entries = db.get_entries("default").await.map_err(|e| e.to_string())?;
+    let user_id = state
+        .user_id
+        .lock()
+        .unwrap()
+        .as_ref()
+        .cloned()
+        .ok_or("User not initialized")?;
+
+    let entries = db.get_entries(&user_id).await.map_err(|e| e.to_string())?;
     Ok(entries)
 }
 
@@ -134,7 +154,15 @@ async fn search_entries(state: State<'_, AppState>, request: SearchRequest) -> R
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
     };
 
-    let results = db.search_entries("default", request).await.map_err(|e| e.to_string())?;
+    let user_id = state
+        .user_id
+        .lock()
+        .unwrap()
+        .as_ref()
+        .cloned()
+        .ok_or("User not initialized")?;
+
+    let results = db.search_entries(&user_id, request).await.map_err(|e| e.to_string())?;
     Ok(results)
 }
 
@@ -187,6 +215,9 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+                // Open DevTools in debug mode
+                let window = app.get_webview_window("main").unwrap();
+                window.open_devtools();
             }
             Ok(())
         })

@@ -1,6 +1,7 @@
 import { Sidebar } from './Sidebar';
 import { Timeline } from '../pages/Timeline';
 import { Editor } from '../pages/Editor';
+import { Reader } from '../pages/Reader';
 import { Chat } from '../pages/Chat';
 import { Search } from '../pages/Search';
 import { Settings } from '../pages/Settings';
@@ -16,6 +17,8 @@ export function Layout() {
         return <Timeline />;
       case 'editor':
         return <Editor />;
+      case 'reader':
+        return <Reader />;
       case 'chat':
         return <Chat />;
       case 'search':

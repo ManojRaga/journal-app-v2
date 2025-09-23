@@ -6,7 +6,7 @@ import { EntryCard } from '../components/EntryCard';
 import { motion } from 'framer-motion';
 
 export function Timeline() {
-  const { entries, setEntries, isLoading, setIsLoading, setCurrentPage } = useAppStore();
+  const { entries, setEntries, isLoading, setIsLoading, setCurrentPage, setCurrentEntry } = useAppStore();
 
   useEffect(() => {
     loadEntries();
@@ -25,6 +25,7 @@ export function Timeline() {
   };
 
   const handleNewEntry = () => {
+    setCurrentEntry(null);
     setCurrentPage('editor');
   };
 

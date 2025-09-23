@@ -76,7 +76,7 @@ function App() {
             >
               Retry
             </button>
-          </div>
+            </div>
         </div>
       </div>
     );

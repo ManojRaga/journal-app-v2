@@ -24,8 +24,9 @@ const moodEmojis: Record<string, string> = {
 };
 
 export function EntryCard({ entry }: EntryCardProps) {
-  const { setCurrentEntry, setCurrentPage, entries, setEntries } = useAppStore();
+  const { setCurrentEntry, setCurrentPage, entries, setEntries, currentEntry } = useAppStore();
   const [showMenu, setShowMenu] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   const handleEdit = () => {
     setCurrentEntry(entry);
@@ -33,18 +34,32 @@ export function EntryCard({ entry }: EntryCardProps) {
     setShowMenu(false);
   };
 
+  const handleOpen = () => {
+    setCurrentEntry(entry);
+    setCurrentPage('reader');
+    setShowMenu(false);
+  };
+
   const handleDelete = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
     try {
-      const confirmed = await confirm('Are you sure you want to delete this entry?');
-      if (confirmed) {
-        await journalApi.deleteEntry(entry.id);
+      const deleted = await journalApi.deleteEntry(entry.id);
+      if (deleted) {
         const updatedEntries = entries.filter(e => e.id !== entry.id);
         setEntries(updatedEntries);
+        if (currentEntry && currentEntry.id === entry.id) {
+          setCurrentEntry(null);
+        }
+      } else {
+        console.error('Delete returned false for entry:', entry.id);
       }
     } catch (error) {
       console.error('Failed to delete entry:', error);
+    } finally {
+      setIsDeleting(false);
+      setShowMenu(false);
     }
-    setShowMenu(false);
   };
 
   const truncateContent = (content: string, maxLength: number = 200) => {
@@ -53,7 +68,7 @@ export function EntryCard({ entry }: EntryCardProps) {
   };
 
   return (
-    <div className="entry-card group relative">
+    <div className="entry-card group relative" onClick={handleOpen}>
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
@@ -77,28 +92,43 @@ export function EntryCard({ entry }: EntryCardProps) {
         {/* Menu */}
         <div className="relative">
           <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(!showMenu);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20"
           >
             <MoreHorizontal className="h-5 w-5" />
           </button>
 
           {showMenu && (
-            <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10">
+            <div
+              className="absolute right-0 mt-2 w-32 bg-white dark:bg-gray-800 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-30"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="py-1">
                 <button
-                  onClick={handleEdit}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEdit();
+                  }}
                   className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <Edit className="h-4 w-4 mr-2" />
                   Edit
                 </button>
                 <button
-                  onClick={handleDelete}
-                  className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete();
+                  }}
+                  disabled={isDeleting}
+                  className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
+                  {isDeleting ? 'Deleting…' : 'Delete'}
                 </button>
               </div>
             </div>
@@ -136,19 +166,9 @@ export function EntryCard({ entry }: EntryCardProps) {
           {entry.createdAt !== entry.updatedAt && 'Updated '}
           {format(new Date(entry.updatedAt), 'h:mm a')}
         </span>
-        <button
-          onClick={handleEdit}
-          className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:text-primary-600 dark:hover:text-primary-400"
-        >
-          Read more →
-        </button>
       </div>
 
-      {/* Click overlay for card interaction */}
-      <div
-        className="absolute inset-0 cursor-pointer"
-        onClick={handleEdit}
-      />
+      {/* Removed overlay; card container handles click. Menu stops propagation. */}
     </div>
   );
 }

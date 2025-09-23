@@ -7,10 +7,13 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub id: String,
+    #[serde(rename = "userId")]
     pub user_id: String,
     pub title: String,
     pub body: String,
+    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
     pub mood: Option<String>,
     pub tags: Option<Vec<String>>,
@@ -209,6 +212,21 @@ impl Database {
             .await?;
 
         Ok(id)
+    }
+
+    pub async fn get_or_create_user(&self, email: &str) -> Result<String> {
+        // First try to find existing user by email
+        let existing_user = sqlx::query("SELECT id FROM users WHERE email = ?")
+            .bind(email)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        if let Some(row) = existing_user {
+            return Ok(row.get("id"));
+        }
+
+        // If user doesn't exist, create one
+        self.create_user(email).await
     }
 
     pub async fn create_entry(&self, user_id: &str, request: CreateEntryRequest) -> Result<JournalEntry> {

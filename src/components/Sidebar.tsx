@@ -20,7 +20,7 @@ const navigation = [
 ];
 
 export function Sidebar() {
-  const { currentPage, setCurrentPage, theme, setTheme } = useAppStore();
+  const { currentPage, setCurrentPage, theme, setTheme, setCurrentEntry } = useAppStore();
 
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
@@ -47,7 +47,12 @@ export function Sidebar() {
           return (
             <button
               key={item.name}
-              onClick={() => setCurrentPage(item.page)}
+              onClick={() => {
+                if (item.page === 'editor') {
+                  setCurrentEntry(null);
+                }
+                setCurrentPage(item.page);
+              }}
               className={clsx(
                 'w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200',
                 isActive

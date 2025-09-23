@@ -27,6 +27,7 @@ export function Editor() {
   const [isSaving, setIsSaving] = useState(false);
 
   const isEditing = !!currentEntry;
+  const isButtonDisabled = isSaving || !title.trim() || !body.trim();
 
   useEffect(() => {
     if (currentEntry) {
@@ -44,15 +45,23 @@ export function Editor() {
   }, [currentEntry]);
 
   const handleSave = async () => {
+    console.log('=== SAVE BUTTON CLICKED ===');
+    console.log('Title:', title);
+    console.log('Body:', body);
+    console.log('Button disabled:', isButtonDisabled);
+
     if (!title.trim() || !body.trim()) {
-      alert('Please fill in both title and content');
+      console.log('Missing title or body');
+      console.log('Missing title or body - please fill in both title and content');
       return;
     }
 
     try {
       setIsSaving(true);
+      console.log('Setting saving state to true');
 
       if (isEditing && currentEntry) {
+        console.log('Updating existing entry:', currentEntry.id);
         // Update existing entry
         const updatedEntry = await journalApi.updateEntry({
           id: currentEntry.id,
@@ -64,29 +73,36 @@ export function Editor() {
 
         if (updatedEntry) {
           updateEntry(currentEntry.id, updatedEntry);
+          console.log('Entry updated successfully!');
         } else {
           throw new Error('Failed to update entry');
         }
       } else {
+        console.log('Creating new entry');
         // Create new entry
-        const newEntry = await journalApi.createEntry({
+        const createRequest = {
           title: title.trim(),
           body: body.trim(),
           mood: mood || undefined,
           tags: tags.length > 0 ? tags : undefined,
-        });
+        };
 
+        console.log('Create request:', createRequest);
+        const newEntry = await journalApi.createEntry(createRequest);
+        console.log('New entry created:', newEntry);
         addEntry(newEntry);
+        console.log('Entry saved successfully!');
       }
 
       // Navigate back to timeline
       setCurrentEntry(null);
       setCurrentPage('timeline');
     } catch (error) {
+      console.error('Save error:', error);
       console.error('Failed to save entry:', error);
-      alert('Failed to save entry. Please try again.');
     } finally {
       setIsSaving(false);
+      console.log('Setting saving state to false');
     }
   };
 
@@ -132,9 +148,20 @@ export function Editor() {
               <span>Cancel</span>
             </button>
             <button
-              onClick={handleSave}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Button clicked! Debug:', {
+                  disabled: isButtonDisabled,
+                  title: title.length,
+                  body: body.length,
+                  isSaving
+                });
+                handleSave();
+              }}
               className="btn-primary flex items-center space-x-2"
-              disabled={isSaving || !title.trim() || !body.trim()}
+              disabled={isButtonDisabled}
+              style={{ zIndex: 10000 }}
             >
               <Save className="h-4 w-4" />
               <span>{isSaving ? 'Saving...' : 'Save'}</span>
@@ -232,16 +259,47 @@ export function Editor() {
 
           {/* Content Editor */}
           <div>
-            <textarea
+            <AutoResizeTextarea
               placeholder="Start writing your thoughts..."
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              className="w-full h-96 bg-transparent border-none outline-none resize-none placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-white text-lg leading-relaxed"
-              style={{ fontFamily: 'Merriweather, serif' }}
             />
           </div>
+
+          {/* Removed debug button */}
         </div>
       </div>
     </div>
+  );
+}
+
+function AutoResizeTextarea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+}) {
+  const ref = React.useRef<HTMLTextAreaElement | null>(null);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      placeholder={placeholder}
+      value={value}
+      onChange={onChange}
+      className="w-full bg-transparent border-none outline-none resize-none placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-white text-lg leading-relaxed"
+      style={{ fontFamily: 'Merriweather, serif', overflow: 'hidden' }}
+      rows={1}
+    />
   );
 }

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Basic Test</title>
+    <style>
+        body { background: red; padding: 50px; }
+        button {
+            background: blue;
+            color: white;
+            padding: 20px;
+            font-size: 20px;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>BASIC HTML TEST</h1>
+    <button onclick="alert('BASIC HTML BUTTON WORKS!')">CLICK ME</button>
+
+    <script>
+        console.log('JavaScript is loading');
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded');
+            alert('JavaScript is working!');
+        });
+
+        document.addEventListener('click', function() {
+            console.log('Document click detected');
+        });
+    </script>
+</body>
+</html>

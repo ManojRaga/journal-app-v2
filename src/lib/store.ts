@@ -8,6 +8,7 @@ export interface JournalEntry {
   title: string;
   body: string;
   createdAt: string;
+  updatedAt: string;
   mood?: string;
   tags?: string[];
 }
@@ -23,7 +24,7 @@ export interface ChatMessage {
 interface AppState {
   // UI State
   theme: 'light' | 'dark';
-  currentPage: 'timeline' | 'editor' | 'chat' | 'search' | 'settings';
+  currentPage: 'timeline' | 'editor' | 'reader' | 'chat' | 'search' | 'settings';
 
   // Journal State
   entries: JournalEntry[];
@@ -41,7 +42,7 @@ interface AppState {
   // Actions
   initializeApp: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
-  setCurrentPage: (page: 'timeline' | 'editor' | 'chat' | 'search' | 'settings') => void;
+  setCurrentPage: (page: 'timeline' | 'editor' | 'reader' | 'chat' | 'search' | 'settings') => void;
 
   // Journal Actions
   setEntries: (entries: JournalEntry[]) => void;
