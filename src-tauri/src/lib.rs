@@ -3,8 +3,8 @@ mod llm;
 mod rag;
 
 use db::{Database, CreateEntryRequest, UpdateEntryRequest, SearchRequest, JournalEntry};
-use llm::ChatRequest;
-use rag::RagResponse;
+use llm::{ChatRequest, LlamaChat};
+use rag::{RagResponse, RagPipeline};
 
 use tauri::{AppHandle, Manager, State};
 use std::sync::Mutex;
@@ -168,21 +168,37 @@ async fn search_entries(state: State<'_, AppState>, request: SearchRequest) -> R
 
 #[tauri::command]
 async fn chat_with_ai(state: State<'_, AppState>, request: ChatRequest) -> Result<RagResponse, String> {
-    // Check if LLM is ready
-    let llm_ready = *state.llm_ready.lock().unwrap();
-    if !llm_ready {
-        return Err("LLM not loaded yet. Please load a model first.".to_string());
-    }
-
-    // For now, return a mock response until we implement proper thread-safe LLM handling
-    // TODO: Implement proper RAG pipeline with thread-safe LLM
-    let mock_response = RagResponse {
-        answer: format!("This is a mock response to: {}", request.message),
-        sources: vec![],
-        query: request.message,
+    // Ensure DB is available
+    let db = {
+        let db_guard = state.db.lock().unwrap();
+        db_guard.as_ref().ok_or("Database not initialized")?.clone()
     };
 
-    Ok(mock_response)
+    // Ensure model path is set
+    let model_path = {
+        let model_path_guard = state.model_path.lock().unwrap();
+        model_path_guard.clone().ok_or("LLM not loaded yet. Please load a model first.")?
+    };
+
+    // Resolve user id from state
+    let user_id = {
+        let uid_guard = state.user_id.lock().unwrap();
+        uid_guard.clone().ok_or("User not initialized")?
+    };
+
+    // Build LLM instance per request (not Send+Sync). It will load lazily.
+    let mut llm = LlamaChat::new().map_err(|e| e.to_string())?;
+    // Eagerly load to surface errors early
+    llm.load_model(&model_path).await.map_err(|e| e.to_string())?;
+
+    // Run a simple RAG pipeline using keyword search for now
+    let mut rag = RagPipeline::new(db, llm);
+    let response = rag
+        .query(&user_id, &request.message, 10)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(response)
 }
 
 #[tauri::command]
