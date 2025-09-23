@@ -39,6 +39,7 @@ interface AppState {
   searchResults: JournalEntry[];
 
   // Actions
+  initializeApp: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
   setCurrentPage: (page: 'timeline' | 'editor' | 'chat' | 'search' | 'settings') => void;
 
@@ -78,7 +79,17 @@ export const useAppStore = create<AppState>()(
       searchResults: [],
 
       // UI Actions
-      setTheme: (theme) => set({ theme }),
+      initializeApp: () => {
+        // Load saved theme from localStorage
+        const savedTheme = localStorage.getItem('journal-app-theme') as 'light' | 'dark' | null;
+        if (savedTheme) {
+          set({ theme: savedTheme });
+        }
+      },
+      setTheme: (theme) => {
+        localStorage.setItem('journal-app-theme', theme);
+        set({ theme });
+      },
       setCurrentPage: (currentPage) => set({ currentPage }),
 
       // Journal Actions

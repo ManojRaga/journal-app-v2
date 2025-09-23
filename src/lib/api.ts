@@ -29,29 +29,30 @@ export interface ChatRequest {
 }
 
 export interface ChatResponse {
-  response: string;
-  sources: string[];
+  answer: string;
+  sources: { content: string }[];
+  query: string;
 }
 
 // Journal API
 export const journalApi = {
   async createEntry(entry: CreateEntryRequest): Promise<JournalEntry> {
-    return await invoke('create_entry', { entry });
+    return await invoke('create_entry', { request: entry });
   },
 
   async getEntries(): Promise<JournalEntry[]> {
     return await invoke('get_entries');
   },
 
-  async getEntry(id: string): Promise<JournalEntry> {
+  async getEntry(id: string): Promise<JournalEntry | null> {
     return await invoke('get_entry', { id });
   },
 
-  async updateEntry(request: UpdateEntryRequest): Promise<JournalEntry> {
+  async updateEntry(request: UpdateEntryRequest): Promise<JournalEntry | null> {
     return await invoke('update_entry', { request });
   },
 
-  async deleteEntry(id: string): Promise<void> {
+  async deleteEntry(id: string): Promise<boolean> {
     return await invoke('delete_entry', { id });
   },
 

@@ -64,6 +64,8 @@ export function Editor() {
 
         if (updatedEntry) {
           updateEntry(currentEntry.id, updatedEntry);
+        } else {
+          throw new Error('Failed to update entry');
         }
       } else {
         // Create new entry
@@ -196,7 +198,7 @@ export function Editor() {
                     placeholder="Add a tag..."
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
-                    onKeyPress={handleTagInputKeyPress}
+                    onKeyDown={handleTagInputKeyPress}
                     className="flex-1 px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400"
                   />
                   <button

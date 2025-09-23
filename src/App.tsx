@@ -1,54 +1,88 @@
-import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from 'react';
+import { Layout } from './components/Layout';
+import { useAppStore } from './lib/store';
+import { systemApi } from './lib/api';
+import { Loader } from 'lucide-react';
 import "./App.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const { theme, initializeApp } = useAppStore();
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-    setGreetMsg(await invoke("greet", { name }));
+  useEffect(() => {
+    // Apply theme to document
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    // Initialize the application
+    const initializeApplication = async () => {
+      try {
+        // Initialize database
+        await systemApi.initializeDatabase();
+
+        // Initialize app store
+        initializeApp();
+
+        console.log('Application initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize application:', error);
+        setInitError(error instanceof Error ? error.message : 'Unknown error occurred');
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initializeApplication();
+  }, [initializeApp]);
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4">
+            <Loader className="h-8 w-8 animate-spin text-primary-600 mx-auto" />
+          </div>
+          <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            Initializing AI Journal
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Setting up your private journal database...
+          </p>
+        </div>
+      </div>
+    );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-            AI Journal
-          </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300 mb-8">
-            Your private, AI-powered journaling companion
-          </p>
-
-          <div className="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-            <div className="space-y-4">
-              <input
-                id="greet-input"
-                onChange={(e) => setName(e.currentTarget.value)}
-                placeholder="Enter a name..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-              />
-              <button
-                type="button"
-                onClick={() => greet()}
-                className="w-full btn-primary"
-              >
-                Greet
-              </button>
-            </div>
-
-            {greetMsg && (
-              <p className="mt-4 text-center text-gray-700 dark:text-gray-300">
-                {greetMsg}
-              </p>
-            )}
+  if (initError) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <h2 className="text-lg font-medium text-red-800 dark:text-red-200 mb-2">
+              Initialization Failed
+            </h2>
+            <p className="text-sm text-red-700 dark:text-red-300 mb-4">
+              {initError}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-primary"
+            >
+              Retry
+            </button>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return <Layout />;
 }
 
 export default App;
