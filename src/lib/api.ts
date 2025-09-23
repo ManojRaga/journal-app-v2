@@ -82,4 +82,8 @@ export const systemApi = {
   async getSystemInfo(): Promise<any> {
     return await invoke('get_system_info');
   },
+
+  async loadLlmModel(modelPath: string): Promise<void> {
+    return await invoke('load_llm_model', { modelPath });
+  },
 };

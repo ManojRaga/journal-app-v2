@@ -3,6 +3,7 @@ import { Settings as SettingsIcon, Moon, Sun, Download, Upload, Database, Shield
 import { useAppStore } from '../lib/store';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import { systemApi } from '../lib/api';
 
 export function Settings() {
   const { theme, setTheme } = useAppStore();
@@ -22,7 +23,16 @@ export function Settings() {
     { id: 'data', label: 'Data & Export', icon: Database },
     { id: 'privacy', label: 'Privacy & Security', icon: Shield },
     { id: 'general', label: 'General', icon: SettingsIcon },
+    { id: 'ai', label: 'AI & Models', icon: SparklesIcon },
   ];
+
+  function SparklesIcon(props: any) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8l2-2m0 0l2 2m-2-2v6m7-2l2-2m0 0l2 2m-2-2v6M4 20h16" />
+      </svg>
+    );
+  }
 
   const handleExportData = async () => {
     try {
@@ -239,6 +249,58 @@ export function Settings() {
     </div>
   );
 
+  const [modelPath, setModelPath] = useState('');
+  const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  const [modelError, setModelError] = useState<string | null>(null);
+
+  const handleLoadModel = async () => {
+    if (!modelPath.trim()) return;
+    setModelStatus('loading');
+    setModelError(null);
+    try {
+      await systemApi.loadLlmModel(modelPath.trim());
+      setModelStatus('loaded');
+    } catch (e: any) {
+      setModelStatus('error');
+      setModelError(e?.message || 'Failed to load model');
+    }
+  };
+
+  const renderAiSettings = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Local AI Model</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Load a local GGUF model file to enable offline AI assistance. Your data stays on-device.
+        </p>
+        <div className="space-y-3">
+          <input
+            type="text"
+            placeholder="/path/to/model.gguf"
+            value={modelPath}
+            onChange={(e) => setModelPath(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleLoadModel}
+              disabled={!modelPath.trim() || modelStatus === 'loading'}
+              className="btn-primary disabled:opacity-50"
+            >
+              {modelStatus === 'loading' ? 'Loading…' : 'Load Model'}
+            </button>
+            {modelStatus === 'loaded' && (
+              <span className="text-sm text-green-600 dark:text-green-400">Model loaded successfully.</span>
+            )}
+            {modelStatus === 'error' && (
+              <span className="text-sm text-red-600 dark:text-red-400">{modelError}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderGeneralSettings = () => (
     <div className="space-y-6">
       <div>
@@ -284,6 +346,8 @@ export function Settings() {
         return renderPrivacySettings();
       case 'general':
         return renderGeneralSettings();
+      case 'ai':
+        return renderAiSettings();
       default:
         return renderAppearanceSettings();
     }
