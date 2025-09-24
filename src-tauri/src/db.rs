@@ -1,7 +1,7 @@
-use sqlx::{migrate::MigrateDatabase, sqlite::SqliteRow, Row, Sqlite, SqlitePool};
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::{migrate::MigrateDatabase, sqlite::SqliteRow, Row, Sqlite, SqlitePool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,16 +17,6 @@ pub struct JournalEntry {
     pub updated_at: DateTime<Utc>,
     pub mood: Option<String>,
     pub tags: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TextChunk {
-    pub id: String,
-    pub entry_id: String,
-    pub user_id: String,
-    pub chunk_index: i32,
-    pub text: String,
-    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,24 +98,6 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        // Text chunks table for RAG
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS chunks (
-                id TEXT PRIMARY KEY,
-                entry_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                chunk_index INTEGER NOT NULL,
-                text TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (entry_id) REFERENCES entries (id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
         // FTS5 virtual tables for full-text search
         sqlx::query(
             r#"
@@ -135,48 +107,6 @@ impl Database {
                 body,
                 content='entries',
                 content_rowid='rowid'
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            r#"
-            CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
-                id UNINDEXED,
-                text,
-                content='chunks',
-                content_rowid='rowid'
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Vector embedding tables (will implement sqlite-vec later)
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS entry_embeddings (
-                id TEXT PRIMARY KEY,
-                entry_id TEXT NOT NULL,
-                embedding BLOB NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (entry_id) REFERENCES entries (id) ON DELETE CASCADE
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS chunk_embeddings (
-                id TEXT PRIMARY KEY,
-                chunk_id TEXT NOT NULL,
-                embedding BLOB NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (chunk_id) REFERENCES chunks (id) ON DELETE CASCADE
             )
             "#,
         )
@@ -208,99 +138,8 @@ impl Database {
             .execute(&self.pool)
             .await?;
 
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_chunks_entry_id ON chunks (entry_id)")
-            .execute(&self.pool)
-            .await?;
-
         log::info!("Database tables created successfully");
         Ok(())
-    }
-
-    // --- Embeddings helpers ---
-    fn serialize_embedding(embedding: &[f32]) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(embedding.len() * 4);
-        for v in embedding {
-            bytes.extend_from_slice(&v.to_le_bytes());
-        }
-        bytes
-    }
-
-    fn deserialize_embedding(blob: &[u8]) -> Vec<f32> {
-        let mut out = Vec::with_capacity(blob.len() / 4);
-        let mut i = 0;
-        while i + 4 <= blob.len() {
-            let arr = [blob[i], blob[i + 1], blob[i + 2], blob[i + 3]];
-            out.push(f32::from_le_bytes(arr));
-            i += 4;
-        }
-        out
-    }
-
-    pub async fn upsert_entry_embedding(&self, entry_id: &str, embedding: &[f32]) -> Result<()> {
-        let blob = Self::serialize_embedding(embedding);
-        let now = Utc::now().to_rfc3339();
-
-        // Try update first; if no row, insert
-        let updated = sqlx::query(
-            "UPDATE entry_embeddings SET embedding = ?, created_at = ? WHERE entry_id = ?"
-        )
-        .bind(&blob)
-        .bind(&now)
-        .bind(entry_id)
-        .execute(&self.pool)
-        .await?;
-
-        if updated.rows_affected() == 0 {
-            let id = Uuid::new_v4().to_string();
-            sqlx::query(
-                "INSERT INTO entry_embeddings (id, entry_id, embedding, created_at) VALUES (?, ?, ?, ?)"
-            )
-            .bind(&id)
-            .bind(entry_id)
-            .bind(&blob)
-            .bind(&now)
-            .execute(&self.pool)
-            .await?;
-        }
-
-        Ok(())
-    }
-
-    pub async fn get_entry_embeddings_for_user(&self, user_id: &str) -> Result<Vec<(String, Vec<f32>)>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT ee.entry_id as entry_id, ee.embedding as embedding
-            FROM entry_embeddings ee
-            INNER JOIN entries e ON e.id = ee.entry_id
-            WHERE e.user_id = ?
-            "#
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut out = Vec::new();
-        for row in rows {
-            let entry_id: String = row.try_get("entry_id")?;
-            let blob: Vec<u8> = row.try_get("embedding")?;
-            out.push((entry_id, Self::deserialize_embedding(&blob)));
-        }
-        Ok(out)
-    }
-
-    pub async fn get_entries_minimal(&self, user_id: &str) -> Result<Vec<JournalEntry>> {
-        let rows = sqlx::query(
-            "SELECT id, user_id, title, body, created_at, updated_at, mood, tags FROM entries WHERE user_id = ?"
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut entries = Vec::new();
-        for row in rows {
-            entries.push(self.row_to_entry(row)?);
-        }
-        Ok(entries)
     }
 
     pub async fn create_user(&self, email: &str) -> Result<String> {
@@ -332,10 +171,17 @@ impl Database {
         self.create_user(email).await
     }
 
-    pub async fn create_entry(&self, user_id: &str, request: CreateEntryRequest) -> Result<JournalEntry> {
+    pub async fn create_entry(
+        &self,
+        user_id: &str,
+        request: CreateEntryRequest,
+    ) -> Result<JournalEntry> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
-        let tags_json = request.tags.as_ref().map(|t| serde_json::to_string(t).unwrap());
+        let tags_json = request
+            .tags
+            .as_ref()
+            .map(|t| serde_json::to_string(t).unwrap());
 
         sqlx::query(
             "INSERT INTO entries (id, user_id, title, body, created_at, updated_at, mood, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -428,7 +274,10 @@ impl Database {
             _has_updates = true;
         }
 
-        let tags_json = request.tags.as_ref().map(|t| serde_json::to_string(t).unwrap());
+        let tags_json = request
+            .tags
+            .as_ref()
+            .map(|t| serde_json::to_string(t).unwrap());
         if let Some(ref tags_str) = tags_json {
             query_parts.push("tags = ?");
             bind_values.push(tags_str.clone());
@@ -477,12 +326,16 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn search_entries(&self, user_id: &str, request: SearchRequest) -> Result<Vec<JournalEntry>> {
+    pub async fn search_entries(
+        &self,
+        user_id: &str,
+        request: SearchRequest,
+    ) -> Result<Vec<JournalEntry>> {
         let limit = request.limit.unwrap_or(50);
 
         // Try FTS5 search first, fall back to simple LIKE search if FTS fails
         let phrase_query = format!("\"{}\"", request.query.replace('"', "\""));
-        
+
         // First try FTS5 search
         let fts_rows = sqlx::query(
             r#"
@@ -492,7 +345,7 @@ impl Database {
             WHERE e.user_id = ? AND entry_fts MATCH ?
             ORDER BY bm25(entry_fts)
             LIMIT ?
-            "#
+            "#,
         )
         .bind(user_id)
         .bind(&phrase_query)
@@ -512,7 +365,7 @@ impl Database {
                     WHERE user_id = ? AND (title LIKE ? OR body LIKE ?)
                     ORDER BY created_at DESC
                     LIMIT ?
-                    "#
+                    "#,
                 )
                 .bind(user_id)
                 .bind(&like_query)
@@ -532,7 +385,12 @@ impl Database {
     }
 
     // --- Chat persistence ---
-    pub async fn create_chat_message(&self, user_id: &str, content: &str, is_user: bool) -> Result<String> {
+    pub async fn create_chat_message(
+        &self,
+        user_id: &str,
+        content: &str,
+        is_user: bool,
+    ) -> Result<String> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
 
@@ -550,7 +408,11 @@ impl Database {
         Ok(id)
     }
 
-    pub async fn get_chat_messages(&self, user_id: &str, limit: Option<i32>) -> Result<Vec<ChatMessage>> {
+    pub async fn get_chat_messages(
+        &self,
+        user_id: &str,
+        limit: Option<i32>,
+    ) -> Result<Vec<ChatMessage>> {
         let limit = limit.unwrap_or(50);
         let rows = sqlx::query(
             "SELECT id, user_id, content, is_user, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
@@ -576,78 +438,6 @@ impl Database {
         Ok(messages)
     }
 
-
-    pub async fn create_text_chunks(&self, entry_id: &str, user_id: &str, text: &str) -> Result<Vec<TextChunk>> {
-        // Simple chunking strategy - split by paragraphs or every 500 characters
-        let chunks = self.chunk_text(text);
-        let mut text_chunks = Vec::new();
-
-        for (index, chunk_text) in chunks.iter().enumerate() {
-            let id = Uuid::new_v4().to_string();
-            let now = Utc::now();
-
-            sqlx::query(
-                "INSERT INTO chunks (id, entry_id, user_id, chunk_index, text, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-            )
-            .bind(&id)
-            .bind(entry_id)
-            .bind(user_id)
-            .bind(index as i32)
-            .bind(chunk_text)
-            .bind(now.to_rfc3339())
-            .execute(&self.pool)
-            .await?;
-
-            // Insert into FTS
-            sqlx::query("INSERT INTO chunk_fts (id, text) VALUES (?, ?)")
-                .bind(&id)
-                .bind(chunk_text)
-                .execute(&self.pool)
-                .await?;
-
-            text_chunks.push(TextChunk {
-                id,
-                entry_id: entry_id.to_string(),
-                user_id: user_id.to_string(),
-                chunk_index: index as i32,
-                text: chunk_text.clone(),
-                created_at: now,
-            });
-        }
-
-        Ok(text_chunks)
-    }
-
-    fn chunk_text(&self, text: &str) -> Vec<String> {
-        // Simple chunking - split by paragraphs, but ensure chunks aren't too long
-        let paragraphs: Vec<&str> = text.split("\n\n").collect();
-        let mut chunks = Vec::new();
-        let mut current_chunk = String::new();
-
-        for paragraph in paragraphs {
-            if current_chunk.len() + paragraph.len() > 500 && !current_chunk.is_empty() {
-                chunks.push(current_chunk.trim().to_string());
-                current_chunk = paragraph.to_string();
-            } else {
-                if !current_chunk.is_empty() {
-                    current_chunk.push_str("\n\n");
-                }
-                current_chunk.push_str(paragraph);
-            }
-        }
-
-        if !current_chunk.is_empty() {
-            chunks.push(current_chunk.trim().to_string());
-        }
-
-        // If no paragraphs, split by sentences or fixed length
-        if chunks.is_empty() && !text.is_empty() {
-            chunks.push(text.to_string());
-        }
-
-        chunks
-    }
-
     fn row_to_entry(&self, row: SqliteRow) -> Result<JournalEntry> {
         let tags_str: Option<String> = row.try_get("tags")?;
         let tags = tags_str.and_then(|s| serde_json::from_str(&s).ok());
@@ -657,8 +447,10 @@ impl Database {
             user_id: row.try_get("user_id")?,
             title: row.try_get("title")?,
             body: row.try_get("body")?,
-            created_at: DateTime::parse_from_rfc3339(&row.try_get::<String, _>("created_at")?)?.with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&row.try_get::<String, _>("updated_at")?)?.with_timezone(&Utc),
+            created_at: DateTime::parse_from_rfc3339(&row.try_get::<String, _>("created_at")?)?
+                .with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&row.try_get::<String, _>("updated_at")?)?
+                .with_timezone(&Utc),
             mood: row.try_get("mood")?,
             tags,
         })

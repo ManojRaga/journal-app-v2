@@ -13,6 +13,8 @@ import os
 import shutil
 from datetime import datetime
 import logging
+import re
+from collections import Counter
 
 # LangChain imports
 from langchain_ollama import OllamaLLM
@@ -43,6 +45,8 @@ llm = None
 vectorstore = None
 embeddings = None
 qa_chain = None
+entry_metadata_map: Dict[str, Dict[str, Any]] = {}
+user_profile: Dict[str, Any] = {"name": None, "name_sources": []}
 PERSIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "chroma_db"))
 COLLECTION_NAME = "journal_entries"
 
@@ -103,6 +107,30 @@ def init_rag_components():
         logger.error(f"❌ Error initializing RAG components: {e}")
         raise
 
+def extract_user_insights(entries: List[JournalEntry]):
+    """Extract simple user profile insights such as name occurrences"""
+    global user_profile
+
+    content_texts = []
+    for entry in entries:
+        content_texts.append(entry.body)
+        if entry.title:
+            content_texts.append(entry.title)
+
+    combined_text = "\n".join(content_texts)
+    name_pattern = re.compile(r"\bMy name is\s+([A-Z][a-z]+)\b", re.IGNORECASE)
+    matches = name_pattern.findall(combined_text)
+
+    if matches:
+        counter = Counter(name.title() for name in matches)
+        most_common = counter.most_common(1)[0]
+        user_profile["name"] = most_common[0]
+        user_profile["name_sources"] = [f"Mentioned {most_common[1]} time(s) in journal entries"]
+    else:
+        user_profile["name"] = None
+        user_profile["name_sources"] = []
+
+
 def load_journal_entries_to_vectorstore():
     """Load journal entries from SQLite and add to vector store"""
     global vectorstore, embeddings
@@ -120,18 +148,35 @@ def load_journal_entries_to_vectorstore():
             ORDER BY created_at DESC
         """)
         
-        entries = cursor.fetchall()
+        rows = cursor.fetchall()
         conn.close()
         
-        if not entries:
+        if not rows:
             logger.info("📝 No journal entries found")
             return
         
         # Convert to documents
         documents = []
-        for entry in entries:
-            entry_id, user_id, title, body, created_at, updated_at, mood, tags = entry
+        entries: List[JournalEntry] = []
+        global entry_metadata_map
+        entry_metadata_map = {}
+
+        for row in rows:
+            entry_id, user_id, title, body, created_at, updated_at, mood, tags = row
             tags_list = json.loads(tags) if tags else []
+
+            entries.append(
+                JournalEntry(
+                    id=entry_id,
+                    user_id=user_id,
+                    title=title,
+                    body=body,
+                    created_at=created_at,
+                    updated_at=updated_at,
+                    mood=mood,
+                    tags=tags_list,
+                )
+            )
 
             doc_text = f"Title: {title}\nDate: {created_at}\nContent: {body}"
             if mood:
@@ -154,6 +199,9 @@ def load_journal_entries_to_vectorstore():
 
             doc = Document(page_content=doc_text, metadata=metadata)
             documents.append(doc)
+            entry_metadata_map[entry_id] = metadata
+
+        extract_user_insights(entries)
         
         # Split documents
         text_splitter = RecursiveCharacterTextSplitter(
@@ -176,8 +224,18 @@ def load_journal_entries_to_vectorstore():
         )
         vectorstore.persist()
         
-        prompt_template = """You are a helpful AI assistant for a personal journaling application. \
-You help users reflect on their thoughts and experiences by analyzing their journal entries.\n\nUse the following pieces of context from the user's journal entries to answer the question.\nIf you don't know the answer based on the context, say so.\n\nContext:\n{context}\n\nQuestion: {question}\n\nAnswer: Provide a thoughtful, personalized response based on the journal entries. Be empathetic and insightful."""
+        prompt_template = """You are a thoughtful journaling companion.
+Use the journal context to answer the user. Adjust your tone and length to the question:
+- For direct facts (e.g. "What is my name?"), respond in one or two concise sentences.
+- For reflective or open-ended questions (e.g. "What patterns do you notice?"), be more expansive, weaving themes with empathy.
+- If context is missing, say so gently and offer next steps.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
 
         PROMPT = PromptTemplate(
             template=prompt_template,
@@ -268,8 +326,26 @@ async def chat_with_ai(request: ChatRequest):
         
         logger.info(f"Processing chat request: {request.message[:50]}...")
         
+        normalized_question = request.message.strip().lower()
+        if re.search(r"what\s+is\s+my\s+name", normalized_question):
+            if user_profile.get("name"):
+                answer = (
+                    f"Based on your journal entries, your name appears to be {user_profile['name']}."
+                )
+                return ChatResponse(
+                    answer=answer,
+                    sources=[{"title": note} for note in user_profile.get("name_sources", [])],
+                    conversation_id=request.conversation_id or "default",
+                )
+            else:
+                return ChatResponse(
+                    answer="I didn't find an explicit mention of your name in the journal entries. Feel free to tell me how you'd like to be addressed!",
+                    sources=[],
+                    conversation_id=request.conversation_id or "default",
+                )
+
         # Get response from QA chain
-        result = qa_chain({"query": request.message})
+        result = qa_chain.invoke({"query": request.message})
         
         # Extract sources
         sources = []

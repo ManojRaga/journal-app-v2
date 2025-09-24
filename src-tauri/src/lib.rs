@@ -1,14 +1,14 @@
 mod db;
-mod llm;
-mod rag;
 
-use db::{Database, CreateEntryRequest, UpdateEntryRequest, SearchRequest, JournalEntry, ChatMessage};
+use db::{
+    ChatMessage, CreateEntryRequest, Database, JournalEntry, SearchRequest, UpdateEntryRequest,
+};
 
-use tauri::{AppHandle, Manager, State};
-use std::sync::Mutex;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use reqwest;
+use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use tauri::{AppHandle, Manager, State};
 
 // Python RAG Service integration
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,7 +26,6 @@ pub struct PythonChatResponse {
 }
 
 // Global state for the application
-// Note: LlamaChat is not Send+Sync, so we'll handle it differently
 pub struct AppState {
     db: Mutex<Option<Database>>,
     user_id: Mutex<Option<String>>,
@@ -42,7 +41,7 @@ impl AppState {
 }
 
 #[tauri::command]
-async fn initialize_database(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+async fn initialize_database(state: State<'_, AppState>, app: AppHandle) -> Result<String, String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
 
@@ -59,13 +58,16 @@ async fn initialize_database(state: State<'_, AppState>, app: AppHandle) -> Resu
     log::info!("Default user ID: {}", user_id);
 
     *state.db.lock().unwrap() = Some(database);
-    *state.user_id.lock().unwrap() = Some(user_id);
+    *state.user_id.lock().unwrap() = Some(user_id.clone());
 
-    Ok(())
+    Ok(user_id)
 }
 
 #[tauri::command]
-async fn create_entry(state: State<'_, AppState>, request: CreateEntryRequest) -> Result<JournalEntry, String> {
+async fn create_entry(
+    state: State<'_, AppState>,
+    request: CreateEntryRequest,
+) -> Result<JournalEntry, String> {
     let db = {
         let db_guard = state.db.lock().unwrap();
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
@@ -79,7 +81,10 @@ async fn create_entry(state: State<'_, AppState>, request: CreateEntryRequest) -
         .cloned()
         .ok_or("User not initialized")?;
 
-    let entry = db.create_entry(&user_id, request).await.map_err(|e| e.to_string())?;
+    let entry = db
+        .create_entry(&user_id, request)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // TODO: Index the entry for RAG when we implement thread-safe LLM handling
 
@@ -117,7 +122,10 @@ async fn get_entry(state: State<'_, AppState>, id: String) -> Result<Option<Jour
 }
 
 #[tauri::command]
-async fn update_entry(state: State<'_, AppState>, request: UpdateEntryRequest) -> Result<Option<JournalEntry>, String> {
+async fn update_entry(
+    state: State<'_, AppState>,
+    request: UpdateEntryRequest,
+) -> Result<Option<JournalEntry>, String> {
     let db = {
         let db_guard = state.db.lock().unwrap();
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
@@ -145,7 +153,10 @@ async fn delete_entry(state: State<'_, AppState>, id: String) -> Result<bool, St
 }
 
 #[tauri::command]
-async fn search_entries(state: State<'_, AppState>, request: SearchRequest) -> Result<Vec<JournalEntry>, String> {
+async fn search_entries(
+    state: State<'_, AppState>,
+    request: SearchRequest,
+) -> Result<Vec<JournalEntry>, String> {
     let db = {
         let db_guard = state.db.lock().unwrap();
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
@@ -159,19 +170,27 @@ async fn search_entries(state: State<'_, AppState>, request: SearchRequest) -> R
         .cloned()
         .ok_or("User not initialized")?;
 
-    let results = db.search_entries(&user_id, request).await.map_err(|e| e.to_string())?;
+    let results = db
+        .search_entries(&user_id, request)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(results)
 }
 
 #[tauri::command]
-async fn chat_with_ai(state: State<'_, AppState>, request: PythonChatRequest) -> Result<PythonChatResponse, String> {
+async fn chat_with_ai(
+    state: State<'_, AppState>,
+    request: PythonChatRequest,
+) -> Result<PythonChatResponse, String> {
     let db = {
         let db_guard = state.db.lock().unwrap();
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
     };
 
     // Store user message
-    let _ = db.create_chat_message(&request.user_id, &request.message, true).await;
+    let _ = db
+        .create_chat_message(&request.user_id, &request.message, true)
+        .await;
 
     // Call Python RAG service
     let client = reqwest::Client::new();
@@ -192,7 +211,9 @@ async fn chat_with_ai(state: State<'_, AppState>, request: PythonChatRequest) ->
         .map_err(|e| format!("Failed to parse Python response: {}", e))?;
 
     // Store AI response
-    let _ = db.create_chat_message(&request.user_id, &response.answer, false).await;
+    let _ = db
+        .create_chat_message(&request.user_id, &response.answer, false)
+        .await;
 
     Ok(response)
 }
@@ -219,7 +240,10 @@ async fn get_chat_history(state: State<'_, AppState>) -> Result<Vec<ChatMessage>
         uid_guard.clone().ok_or("User not initialized")?
     };
 
-    let messages = db.get_chat_messages(&user_id, Some(50)).await.map_err(|e| e.to_string())?;
+    let messages = db
+        .get_chat_messages(&user_id, Some(50))
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(messages)
 }
 

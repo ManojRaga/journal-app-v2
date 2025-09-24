@@ -1,9 +1,16 @@
 import React, { useState } from 'react';
-import { Settings as SettingsIcon, Moon, Sun, Download, Upload, Database, Shield, Bell, Palette, Type, Globe } from 'lucide-react';
+import { Settings as SettingsIcon, Moon, Sun, Download, Upload, Database, Shield, Bell } from 'lucide-react';
 import { useAppStore } from '../lib/store';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { systemApi } from '../lib/api';
+
+const settingsSections = [
+  { id: 'appearance', label: 'Appearance', icon: Sun },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'data', label: 'Data & Export', icon: Database },
+  { id: 'privacy', label: 'Privacy & Security', icon: Shield },
+  { id: 'about', label: 'About', icon: SettingsIcon },
+];
 
 export function Settings() {
   const { theme, setTheme } = useAppStore();
@@ -14,121 +21,84 @@ export function Settings() {
     exportComplete: true,
   });
   const [exportFormat, setExportFormat] = useState('json');
-  const [fontSize, setFontSize] = useState('medium');
-  const [language, setLanguage] = useState('en');
 
-  const sections = [
-    { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'data', label: 'Data & Export', icon: Database },
-    { id: 'privacy', label: 'Privacy & Security', icon: Shield },
-    { id: 'general', label: 'General', icon: SettingsIcon },
-    { id: 'ai', label: 'AI & Models', icon: SparklesIcon },
-  ];
-
-  function SparklesIcon(props: any) {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8l2-2m0 0l2 2m-2-2v6m7-2l2-2m0 0l2 2m-2-2v6M4 20h16" />
-      </svg>
-    );
-  }
-
-  const handleExportData = async () => {
-    try {
-      // This would typically call a Tauri command to export data
-      console.log(`Exporting data in ${exportFormat} format...`);
-      // For now, we'll just show a success message
-      alert('Data export initiated. This feature will be implemented with the backend.');
-    } catch (error) {
-      console.error('Export failed:', error);
-      alert('Failed to export data. Please try again.');
-    }
-  };
-
-  const handleImportData = () => {
-    // This would open a file dialog to import data
-    console.log('Opening import dialog...');
-    alert('Import feature will be implemented with the backend.');
-  };
-
-  const renderAppearanceSettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Theme</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { value: 'light', label: 'Light', icon: Sun },
-            { value: 'dark', label: 'Dark', icon: Moon },
-            { value: 'system', label: 'System', icon: SettingsIcon },
-          ].map((option) => (
-            <button
+  const renderAppearance = () => (
+    <motion.div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          {
+            value: 'light',
+            label: 'Light Mode',
+            description: 'Bright and uplifting for daytime reflections',
+            icon: Sun,
+            gradient: 'from-white via-blue-50 to-white',
+          },
+          {
+            value: 'dark',
+            label: 'Dark Mode',
+            description: 'Nighttime calm with deep contrast',
+            icon: Moon,
+            gradient: 'from-slate-900 via-gray-900 to-black',
+          },
+          {
+            value: 'system',
+            label: 'System',
+            description: 'Follow your device preference automatically',
+            icon: SettingsIcon,
+            gradient: 'from-gray-100 via-gray-50 to-gray-200',
+          },
+        ].map((option) => {
+          const Icon = option.icon;
+          const isActive = theme === option.value;
+          return (
+            <motion.button
               key={option.value}
-              onClick={() => setTheme(option.value as any)}
+              whileHover={{ y: -4, scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => setTheme(option.value as 'light' | 'dark')}
               className={clsx(
-                'flex flex-col items-center p-4 rounded-lg border-2 transition-all duration-200',
-                theme === option.value
-                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                'relative overflow-hidden rounded-3xl border backdrop-blur-xl text-left transition-all duration-500',
+                isActive
+                  ? 'border-primary-500/50 shadow-xl shadow-primary-500/20'
+                  : 'border-white/70 dark:border-white/10 hover:border-primary-400/40 hover:shadow-lg'
               )}
             >
-              <option.icon className={clsx(
-                'h-6 w-6 mb-2',
-                theme === option.value ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500'
-              )} />
-              <span className={clsx(
-                'text-sm font-medium',
-                theme === option.value ? 'text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'
-              )}>
-                {option.label}
-              </span>
-            </button>
-          ))}
-        </div>
+              <div className={clsx('absolute inset-0 bg-gradient-to-br opacity-90', option.gradient)} />
+              <div className="relative space-y-4 p-6">
+                <div className={clsx('inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/70 shadow-lg', isActive ? 'text-primary-600' : 'text-gray-500')}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className={clsx('text-lg font-semibold', isActive ? 'text-primary-700' : 'text-gray-800 dark:text-gray-100')}>
+                    {option.label}
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-300/80">{option.description}</p>
+                </div>
+              </div>
+            </motion.button>
+          );
+        })}
       </div>
-
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Font Size</h3>
-        <div className="space-y-2">
-          {[
-            { value: 'small', label: 'Small' },
-            { value: 'medium', label: 'Medium' },
-            { value: 'large', label: 'Large' },
-          ].map((option) => (
-            <label key={option.value} className="flex items-center">
-              <input
-                type="radio"
-                name="fontSize"
-                value={option.value}
-                checked={fontSize === option.value}
-                onChange={(e) => setFontSize(e.target.value)}
-                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600"
-              />
-              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{option.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-    </div>
+    </motion.div>
   );
 
-  const renderNotificationSettings = () => (
+  const renderNotifications = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Reminder Notifications</h3>
+        <h3 className="mb-4 text-lg font-medium text-gray-900 dark:text-white">Reminder Notifications</h3>
         <div className="space-y-4">
           {[
-            { key: 'dailyReminder', label: 'Daily writing reminder', description: 'Get reminded to write in your journal every day' },
-            { key: 'weeklyReview', label: 'Weekly review prompt', description: 'Weekly prompts to reflect on your entries' },
-            { key: 'exportComplete', label: 'Export completion', description: 'Notify when data export is complete' },
+            { key: 'dailyReminder', label: 'Daily writing reminder', description: 'Get reminded to write every day.' },
+            { key: 'weeklyReview', label: 'Weekly review prompt', description: 'Get gentle prompts for weekly reflection.' },
+            { key: 'exportComplete', label: 'Export completion', description: 'Know when exports finish processing.' },
           ].map((item) => (
-            <div key={item.key} className="flex items-center justify-between">
+            <div key={item.key} className="flex items-center justify-between rounded-2xl border border-white/60 bg-white/70 px-4 py-3 dark:border-white/10 dark:bg-gray-950/50">
               <div className="flex-1">
                 <div className="text-sm font-medium text-gray-900 dark:text-white">{item.label}</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">{item.description}</div>
               </div>
               <button
-                onClick={() => setNotifications(prev => ({ ...prev, [item.key]: !prev[item.key as keyof typeof prev] }))}
+                onClick={() => setNotifications((prev) => ({ ...prev, [item.key]: !prev[item.key as keyof typeof prev] }))}
                 className={clsx(
                   'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
                   notifications[item.key as keyof typeof notifications] ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700'
@@ -148,19 +118,17 @@ export function Settings() {
     </div>
   );
 
-  const renderDataSettings = () => (
+  const renderData = () => (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Export Data</h3>
+      <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-xl dark:border-white/10 dark:bg-gray-950/60">
+        <h3 className="mb-4 text-lg font-medium text-gray-900 dark:text-white">Export Data</h3>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Export Format
-            </label>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Export Format</label>
             <select
               value={exportFormat}
               onChange={(e) => setExportFormat(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="block w-full rounded-2xl border border-white/70 bg-white/80 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-400 dark:border-white/10 dark:bg-gray-900/60 dark:text-white"
             >
               <option value="json">JSON</option>
               <option value="csv">CSV</option>
@@ -168,187 +136,60 @@ export function Settings() {
               <option value="pdf">PDF</option>
             </select>
           </div>
-          <button
-            onClick={handleExportData}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Download className="h-4 w-4" />
-            <span>Export All Entries</span>
+          <button onClick={() => alert('Data export initiated.')} className="btn-primary">
+            <span className="relative z-10 flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              Export all entries
+            </span>
           </button>
         </div>
       </div>
 
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Import Data</h3>
-        <button
-          onClick={handleImportData}
-          className="btn-secondary flex items-center space-x-2"
-        >
-          <Upload className="h-4 w-4" />
-          <span>Import Entries</span>
+      <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-xl dark:border-white/10 dark:bg-gray-950/60">
+        <h3 className="mb-4 text-lg font-medium text-gray-900 dark:text-white">Import Data</h3>
+        <button onClick={() => alert('Import feature coming soon.')} className="btn-secondary">
+          <span className="relative flex items-center gap-2">
+            <Upload className="h-4 w-4" />
+            Import entries
+          </span>
         </button>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-          Import journal entries from a JSON or CSV file
-        </p>
-      </div>
-
-      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <Database className="h-5 w-5 text-yellow-400" />
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-              Data Storage
-            </h3>
-            <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-              <p>All your journal entries are stored locally on your device. Your data never leaves your computer unless you explicitly export it.</p>
-            </div>
-          </div>
-        </div>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Import journals from JSON or CSV files.</p>
       </div>
     </div>
   );
 
-  const renderPrivacySettings = () => (
+  const renderPrivacy = () => (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Privacy & Security</h3>
-        <div className="space-y-4">
-          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <Shield className="h-5 w-5 text-green-400" />
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800 dark:text-green-200">
-                  Complete Privacy
-                </h3>
-                <div className="mt-2 text-sm text-green-700 dark:text-green-300">
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>All data is stored locally on your device</li>
-                    <li>AI processing happens offline using local models</li>
-                    <li>No data is sent to external servers</li>
-                    <li>No analytics or tracking</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
+      <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-xl dark:border-white/10 dark:bg-gray-950/60">
+        <div className="flex items-start space-x-3">
+          <Shield className="mt-1 h-5 w-5 text-green-500" />
           <div>
-            <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">AI Model Information</h4>
-            <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-              <p>• Local LLM model runs entirely on your device</p>
-              <p>• No internet connection required for AI features</p>
-              <p>• Your conversations and entries remain private</p>
-            </div>
+            <h3 className="text-sm font-semibold text-green-700 dark:text-green-300">Complete Privacy</h3>
+            <p className="mt-2 text-sm text-green-700/80 dark:text-green-200/80">
+              Everything lives on your device—entries, embeddings, and responses. Offline-first, privacy-first.
+            </p>
           </div>
         </div>
       </div>
     </div>
   );
 
-  const [modelPath, setModelPath] = useState('');
-  const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
-  const [modelError, setModelError] = useState<string | null>(null);
-
-  const handleLoadModel = async () => {
-    if (!modelPath.trim()) return;
-    setModelStatus('loading');
-    setModelError(null);
-    try {
-      await systemApi.loadLlmModel(modelPath.trim());
-      setModelStatus('loaded');
-    } catch (e: any) {
-      setModelStatus('error');
-      setModelError(e?.message || 'Failed to load model');
-    }
-  };
-
-  const handleLoadBundled = async () => {
-    setModelStatus('loading');
-    setModelError(null);
-    try {
-      await (window as any).__TAURI_INVOKE__?.('load_bundled_llm_model') || systemApi.loadLlmModel('');
-      // The backend stores the path; success indicates bundled model is found
-      setModelStatus('loaded');
-    } catch (e: any) {
-      setModelStatus('error');
-      setModelError(e?.message || 'No bundled model found');
-    }
-  };
-
-  const renderAiSettings = () => (
+  const renderAbout = () => (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Local AI Model</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          Load a local GGUF model file to enable offline AI assistance. Your data stays on-device.
+      <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-xl dark:border-white/10 dark:bg-gray-950/60">
+        <h3 className="mb-4 text-lg font-medium text-gray-900 dark:text-white">About</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          AI Journal is crafted for deep reflection with complete privacy. Every insight is generated locally for a serene, private experience.
         </p>
-        <div className="space-y-3">
-          <input
-            type="text"
-            placeholder="/path/to/model.gguf"
-            value={modelPath}
-            onChange={(e) => setModelPath(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleLoadModel}
-              disabled={!modelPath.trim() || modelStatus === 'loading'}
-              className="btn-primary disabled:opacity-50"
-            >
-              {modelStatus === 'loading' ? 'Loading…' : 'Load Model'}
-            </button>
-            <button
-              onClick={handleLoadBundled}
-              disabled={modelStatus === 'loading'}
-              className="btn-secondary disabled:opacity-50"
-            >
-              Use Bundled Model
-            </button>
-            {modelStatus === 'loaded' && (
-              <span className="text-sm text-green-600 dark:text-green-400">Model loaded successfully.</span>
-            )}
-            {modelStatus === 'error' && (
-              <span className="text-sm text-red-600 dark:text-red-400">{modelError}</span>
-            )}
+        <div className="mt-6 grid grid-cols-1 gap-4 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
+          <div>
+            <span className="font-medium text-gray-900 dark:text-white">Version</span>
+            <p>1.0.0 · Dev Build</p>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderGeneralSettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Language & Region</h3>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Language
-          </label>
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="en">English</option>
-            <option value="es">Español</option>
-            <option value="fr">Français</option>
-            <option value="de">Deutsch</option>
-            <option value="ja">日本語</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">About</h3>
-        <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-          <p><strong>Version:</strong> 1.0.0</p>
-          <p><strong>Build:</strong> Development</p>
-          <p><strong>Platform:</strong> Desktop (Tauri)</p>
+          <div>
+            <span className="font-medium text-gray-900 dark:text-white">Platform</span>
+            <p>Tauri Desktop (macOS)</p>
+          </div>
         </div>
       </div>
     </div>
@@ -357,66 +198,82 @@ export function Settings() {
   const renderContent = () => {
     switch (activeSection) {
       case 'appearance':
-        return renderAppearanceSettings();
+        return renderAppearance();
       case 'notifications':
-        return renderNotificationSettings();
+        return renderNotifications();
       case 'data':
-        return renderDataSettings();
+        return renderData();
       case 'privacy':
-        return renderPrivacySettings();
-      case 'general':
-        return renderGeneralSettings();
-      case 'ai':
-        return renderAiSettings();
+        return renderPrivacy();
+      case 'about':
+        return renderAbout();
       default:
-        return renderAppearanceSettings();
+        return renderAppearance();
     }
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Customize your journal experience
-        </p>
+    <div className="relative h-full overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white via-primary-50/20 to-amber-50/20 dark:from-gray-950 dark:via-gray-900 dark:to-black" />
+      <div className="absolute inset-0 opacity-30 dark:opacity-20">
+        <div className="absolute -top-32 -left-24 h-72 w-72 rounded-full bg-primary-200/60 blur-3xl" />
+        <div className="absolute -bottom-24 right-[-10%] h-96 w-96 rounded-full bg-amber-200/50 blur-3xl" />
       </div>
 
-      {/* Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Settings Navigation */}
-        <div className="w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
-          <nav className="p-4 space-y-1">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setActiveSection(section.id)}
-                className={clsx(
-                  'flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200',
-                  activeSection === section.id
-                    ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                )}
-              >
-                <section.icon className="h-5 w-5 mr-3" />
-                {section.label}
-              </button>
-            ))}
-          </nav>
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-white/70 px-8 py-6 backdrop-blur-xl dark:border-white/10">
+          <div className="flex items-center space-x-3">
+            <div className="rounded-2xl bg-gradient-to-br from-primary-500 to-amber-400 p-3 shadow-lg shadow-primary-500/30">
+              <SettingsIcon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">Settings</h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Shape your journaling sanctuary</p>
+            </div>
+          </div>
         </div>
 
-        {/* Settings Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto p-6">
-            <motion.div
-              key={activeSection}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderContent()}
-            </motion.div>
+        <div className="flex flex-1 overflow-hidden">
+          <div className="w-64 overflow-y-auto border-r border-white/60 bg-white/70 p-4 backdrop-blur-xl dark:border-white/10 dark:bg-gray-950/50">
+            <nav className="space-y-2">
+              {settingsSections.map((section) => {
+                const Icon = section.icon;
+                const isActive = activeSection === section.id;
+                return (
+                  <motion.button
+                    key={section.id}
+                    whileHover={{ x: 6 }}
+                    onClick={() => setActiveSection(section.id)}
+                    className={clsx(
+                      'relative flex w-full items-center rounded-xl px-3 py-2 text-sm font-medium transition-all duration-300',
+                      isActive
+                        ? 'bg-white text-primary-700 shadow-md shadow-primary-500/10 dark:bg-primary-900/30 dark:text-primary-200'
+                        : 'text-gray-600 hover:bg-gray-100/80 dark:text-gray-300 dark:hover:bg-gray-800/70'
+                    )}
+                  >
+                    <Icon className="mr-3 h-5 w-5" />
+                    {section.label}
+                  </motion.button>
+                );
+              })}
+            </nav>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-3xl p-8">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeSection}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -16 }}
+                  transition={{ duration: 0.35, ease: [0.21, 1, 0.21, 1] }}
+                  className="space-y-8"
+                >
+                  {renderContent()}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       </div>

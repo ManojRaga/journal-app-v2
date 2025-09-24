@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Plus, Clock, Heart, Tag } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { journalApi } from '../lib/api';
 import { EntryCard } from '../components/EntryCard';
@@ -42,20 +42,25 @@ export function Timeline() {
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Journal Timeline
-            </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-            </p>
+          <div className="space-y-2">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: [0.21, 1, 0.21, 1] }}
+            >
+              <h1 className="text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
+                Journal Timeline
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+              </p>
+            </motion.div>
           </div>
-          <button
-            onClick={handleNewEntry}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>New Entry</span>
+          <button onClick={handleNewEntry} className="btn-primary">
+            <span className="relative z-10 flex items-center space-x-2">
+              <Plus className="h-4 w-4" />
+              <span>New Entry</span>
+            </span>
           </button>
         </div>
       </div>
@@ -84,7 +89,7 @@ export function Timeline() {
             </button>
           </motion.div>
         ) : (
-          <div className="max-w-3xl mx-auto space-y-6">
+          <div className="max-w-3xl mx-auto space-y-6" data-testid="entries-grid">
             {entries.map((entry, index) => (
               <motion.div
                 key={entry.id}

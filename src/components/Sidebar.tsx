@@ -1,15 +1,8 @@
 import React from 'react';
-import {
-  BookOpen,
-  MessageCircle,
-  Search,
-  Settings,
-  PenSquare,
-  Moon,
-  Sun
-} from 'lucide-react';
+import { BookOpen, MessageCircle, Search, Settings, PenSquare } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import clsx from 'clsx';
+import { motion } from 'framer-motion';
 
 const navigation = [
   { name: 'Timeline', icon: BookOpen, page: 'timeline' as const },
@@ -20,17 +13,18 @@ const navigation = [
 ];
 
 export function Sidebar() {
-  const { currentPage, setCurrentPage, theme, setTheme, setCurrentEntry } = useAppStore();
-
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
+  const { currentPage, setCurrentPage, setCurrentEntry } = useAppStore();
 
   return (
-    <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <div className="relative w-68 bg-white/90 dark:bg-gray-950/70 border-r border-white/60 dark:border-white/10 shadow-xl backdrop-blur-2xl flex flex-col">
+      <div className="absolute inset-0 pointer-events-none opacity-20 dark:opacity-10">
+        <div className="absolute -top-12 -left-10 h-24 w-24 rounded-full bg-primary-200 blur-3xl" />
+        <div className="absolute bottom-0 right-4 h-32 w-32 rounded-full bg-amber-200 blur-3xl" />
+      </div>
+
       {/* Header */}
-      <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+      <div className="relative p-6 border-b border-white/70 dark:border-white/10">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-white tracking-tight">
           AI Journal
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -39,14 +33,17 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2">
-        {navigation.map((item) => {
+      <nav className="relative flex-1 p-4 space-y-2">
+        {navigation.map((item, index) => {
           const Icon = item.icon;
           const isActive = currentPage === item.page;
 
           return (
-            <button
+            <motion.button
               key={item.name}
+              layout
+              whileHover={{ x: 4 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => {
                 if (item.page === 'editor') {
                   setCurrentEntry(null);
@@ -54,37 +51,34 @@ export function Sidebar() {
                 setCurrentPage(item.page);
               }}
               className={clsx(
-                'w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200',
+                'relative w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-300',
                 isActive
-                  ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                  ? 'bg-white shadow-lg shadow-primary-500/10 text-primary-700 dark:text-primary-200 dark:bg-primary-900/30'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-800/60 hover:shadow'
               )}
+              style={{
+                boxShadow: isActive ? '0 25px 45px -20px rgba(59,130,246,0.35)' : undefined,
+              }}
             >
               <Icon className="mr-3 h-5 w-5" />
-              {item.name}
-            </button>
+              <span>{item.name}</span>
+              {isActive && (
+                <motion.span
+                  layoutId="sidebar-active"
+                  className="absolute inset-0 rounded-xl border border-primary-500/40 dark:border-primary-300/30"
+                  transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                />
+              )}
+            </motion.button>
           );
         })}
       </nav>
 
-      {/* Theme Toggle */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-        <button
-          onClick={toggleTheme}
-          className="w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white rounded-md transition-colors duration-200"
-        >
-          {theme === 'light' ? (
-            <>
-              <Moon className="mr-3 h-5 w-5" />
-              Dark Mode
-            </>
-          ) : (
-            <>
-              <Sun className="mr-3 h-5 w-5" />
-              Light Mode
-            </>
-          )}
-        </button>
+      {/* Footer */}
+      <div className="relative p-4 border-t border-white/60 dark:border-white/10">
+        <p className="text-xs font-medium text-gray-400 dark:text-gray-500">
+          Crafted for mindful reflection
+        </p>
       </div>
     </div>
   );

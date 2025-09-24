@@ -22,6 +22,7 @@ export interface ChatMessage {
 }
 
 interface AppState {
+  userId: string | null;
   // UI State
   theme: 'light' | 'dark';
   currentPage: 'timeline' | 'editor' | 'reader' | 'chat' | 'search' | 'settings';
@@ -42,6 +43,7 @@ interface AppState {
   // Actions
   initializeApp: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  setUserId: (userId: string | null) => void;
   setCurrentPage: (page: 'timeline' | 'editor' | 'reader' | 'chat' | 'search' | 'settings') => void;
 
   // Journal Actions
@@ -66,6 +68,7 @@ export const useAppStore = create<AppState>()(
   devtools(
     (set, get) => ({
       // Initial State
+      userId: null,
       theme: 'light',
       currentPage: 'timeline',
 
@@ -86,10 +89,23 @@ export const useAppStore = create<AppState>()(
         if (savedTheme) {
           set({ theme: savedTheme });
         }
+
+        const savedUserId = localStorage.getItem('journal-app-user-id');
+        if (savedUserId) {
+          set({ userId: savedUserId });
+        }
       },
       setTheme: (theme) => {
         localStorage.setItem('journal-app-theme', theme);
         set({ theme });
+      },
+      setUserId: (userId) => {
+        if (userId) {
+          localStorage.setItem('journal-app-user-id', userId);
+        } else {
+          localStorage.removeItem('journal-app-user-id');
+        }
+        set({ userId });
       },
       setCurrentPage: (currentPage) => set({ currentPage }),
 

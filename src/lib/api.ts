@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { JournalEntry, ChatMessage } from './store';
+import type { JournalEntry } from './store';
 import { useAppStore } from './store';
 
 // Tauri command wrappers for type safety
@@ -65,7 +65,7 @@ export const journalApi = {
 
 // AI Chat API
 export const chatApi = {
-  async sendMessage(message: string): Promise<string> {
+  async sendMessage(message: string): Promise<ChatResponse> {
     const userId = useAppStore.getState().userId;
     if (!userId) {
       throw new Error('User not initialized');
@@ -79,14 +79,17 @@ export const chatApi = {
       },
     });
     
-    return response.answer;
+    return response;
   },
 };
 
 // System API
 export const systemApi = {
-  async initializeDatabase(): Promise<void> {
-    return await invoke('initialize_database');
+  async initializeDatabase(): Promise<string> {
+    const userId = await invoke<string>('initialize_database');
+    const { setUserId } = useAppStore.getState();
+    setUserId(userId);
+    return userId;
   },
 
   async getSystemInfo(): Promise<any> {

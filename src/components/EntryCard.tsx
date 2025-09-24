@@ -1,10 +1,11 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { Clock, Heart, Tag, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
+import { Clock, Tag, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { JournalEntry } from '../lib/store';
 import { useAppStore } from '../lib/store';
 import { journalApi } from '../lib/api';
 import clsx from 'clsx';
+import { motion } from 'framer-motion';
 
 interface EntryCardProps {
   entry: JournalEntry;
@@ -68,25 +69,30 @@ export function EntryCard({ entry }: EntryCardProps) {
   };
 
   return (
-    <div className="entry-card group relative" onClick={handleOpen}>
+    <motion.div
+      layout
+      onClick={handleOpen}
+      className="entry-card group relative overflow-hidden rounded-3xl border border-white/60 dark:border-white/10 bg-white/90 dark:bg-gray-950/70 shadow-xl shadow-gray-900/5 hover:shadow-2xl transition-all duration-300"
+      whileHover={{ y: -4 }}
+    >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
             {entry.title}
           </h3>
-          <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-            <div className="flex items-center space-x-1">
-              <Clock className="h-4 w-4" />
-              <span>{format(new Date(entry.createdAt), 'MMM d, yyyy')}</span>
-            </div>
+        <motion.div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400" layout>
+          <div className="flex items-center space-x-1">
+            <Clock className="h-4 w-4" />
+            <span>{format(new Date(entry.createdAt), 'MMM d, yyyy')}</span>
+          </div>
             {entry.mood && (
               <div className="flex items-center space-x-1">
                 <span>{moodEmojis[entry.mood] || '😊'}</span>
                 <span className="capitalize">{entry.mood}</span>
               </div>
             )}
-          </div>
+        </motion.div>
         </div>
 
         {/* Menu */}
@@ -137,38 +143,38 @@ export function EntryCard({ entry }: EntryCardProps) {
       </div>
 
       {/* Content */}
-      <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
+      <motion.div layout className="prose prose-sm dark:prose-invert max-w-none mb-4">
         <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
           {truncateContent(entry.body)}
         </p>
-      </div>
+      </motion.div>
 
-      {/* Tags */}
       {entry.tags && entry.tags.length > 0 && (
-        <div className="flex items-center space-x-2 mb-4">
+        <motion.div layout className="flex items-center space-x-2 mb-4">
           <Tag className="h-4 w-4 text-gray-400" />
           <div className="flex flex-wrap gap-2">
             {entry.tags.map((tag, index) => (
-              <span
+              <motion.span
                 key={index}
-                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                layout
+                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100/70 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                whileHover={{ scale: 1.05 }}
               >
                 {tag}
-              </span>
+              </motion.span>
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+      <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 tracking-tight">
         <span>
           {entry.createdAt !== entry.updatedAt && 'Updated '}
           {format(new Date(entry.updatedAt), 'h:mm a')}
         </span>
       </div>
 
-      {/* Removed overlay; card container handles click. Menu stops propagation. */}
-    </div>
+    </motion.div>
   );
 }

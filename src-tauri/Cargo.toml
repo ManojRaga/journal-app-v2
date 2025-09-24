@@ -35,19 +35,4 @@ anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 
-# AI/ML dependencies
-llama-cpp-2 = "0.1.67"
-candle-core = "0.9"
-candle-nn = "0.9"
-candle-transformers = "0.9"
-tokenizers = "0.22"
-
-# Async/streaming
-futures = "0.3"
-async-stream = "0.3"
-
-# Vector embeddings
-faiss = { version = "0.12", optional = true }
-
-# Text processing
-regex = "1.0"
+# (Deprecated AI dependencies removed: llama-cpp-2, candle, tokenizers, faiss, regex, async-stream)
