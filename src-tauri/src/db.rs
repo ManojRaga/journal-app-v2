@@ -183,6 +183,22 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Chat messages table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                is_user BOOLEAN NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // Create indexes
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_entries_user_id ON entries (user_id)")
             .execute(&self.pool)
@@ -464,9 +480,11 @@ impl Database {
     pub async fn search_entries(&self, user_id: &str, request: SearchRequest) -> Result<Vec<JournalEntry>> {
         let limit = request.limit.unwrap_or(50);
 
-        // Use alias 'fts' in MATCH, and order by bm25 score. Quote the query as a phrase to avoid FTS syntax issues with punctuation.
+        // Try FTS5 search first, fall back to simple LIKE search if FTS fails
         let phrase_query = format!("\"{}\"", request.query.replace('"', "\""));
-        let rows = sqlx::query(
+        
+        // First try FTS5 search
+        let fts_rows = sqlx::query(
             r#"
             SELECT e.id, e.user_id, e.title, e.body, e.created_at, e.updated_at, e.mood, e.tags
             FROM entries e
@@ -480,7 +498,30 @@ impl Database {
         .bind(&phrase_query)
         .bind(limit)
         .fetch_all(&self.pool)
-        .await?;
+        .await;
+
+        let rows = match fts_rows {
+            Ok(rows) if !rows.is_empty() => rows,
+            _ => {
+                // Fallback to simple LIKE search
+                let like_query = format!("%{}%", request.query);
+                sqlx::query(
+                    r#"
+                    SELECT id, user_id, title, body, created_at, updated_at, mood, tags
+                    FROM entries
+                    WHERE user_id = ? AND (title LIKE ? OR body LIKE ?)
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    "#
+                )
+                .bind(user_id)
+                .bind(&like_query)
+                .bind(&like_query)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
 
         let mut entries = Vec::new();
         for row in rows {
@@ -489,6 +530,52 @@ impl Database {
 
         Ok(entries)
     }
+
+    // --- Chat persistence ---
+    pub async fn create_chat_message(&self, user_id: &str, content: &str, is_user: bool) -> Result<String> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO chat_messages (id, user_id, content, is_user, created_at) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(&id)
+        .bind(user_id)
+        .bind(content)
+        .bind(is_user)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(id)
+    }
+
+    pub async fn get_chat_messages(&self, user_id: &str, limit: Option<i32>) -> Result<Vec<ChatMessage>> {
+        let limit = limit.unwrap_or(50);
+        let rows = sqlx::query(
+            "SELECT id, user_id, content, is_user, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
+        )
+        .bind(user_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut messages = Vec::new();
+        for row in rows {
+            messages.push(ChatMessage {
+                id: row.try_get("id")?,
+                user_id: row.try_get("user_id")?,
+                content: row.try_get("content")?,
+                is_user: row.try_get("is_user")?,
+                created_at: row.try_get("created_at")?,
+            });
+        }
+
+        // Reverse to get chronological order
+        messages.reverse();
+        Ok(messages)
+    }
+
 
     pub async fn create_text_chunks(&self, entry_id: &str, user_id: &str, text: &str) -> Result<Vec<TextChunk>> {
         // Simple chunking strategy - split by paragraphs or every 500 characters
@@ -576,4 +663,13 @@ impl Database {
             tags,
         })
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub id: String,
+    pub user_id: String,
+    pub content: String,
+    pub is_user: bool,
+    pub created_at: String,
 }

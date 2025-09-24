@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { JournalEntry, ChatMessage } from './store';
+import { useAppStore } from './store';
 
 // Tauri command wrappers for type safety
 
@@ -24,14 +25,15 @@ export interface SearchRequest {
 }
 
 export interface ChatRequest {
+  user_id: string;
   message: string;
-  userId: string;
+  conversation_id?: string;
 }
 
 export interface ChatResponse {
   answer: string;
-  sources: { content: string }[];
-  query: string;
+  sources: any[];
+  conversation_id: string;
 }
 
 // Journal API
@@ -63,14 +65,21 @@ export const journalApi = {
 
 // AI Chat API
 export const chatApi = {
-  async sendMessage(request: ChatRequest): Promise<ChatResponse> {
-    // Map camelCase to snake_case expected by Rust
-    return await invoke('chat_with_ai', { request: { message: request.message, user_id: request.userId } });
-  },
-
-  async streamMessage(request: ChatRequest): Promise<void> {
-    // For streaming responses, we'll use events
-    return await invoke('stream_chat_with_ai', { request });
+  async sendMessage(message: string): Promise<string> {
+    const userId = useAppStore.getState().userId;
+    if (!userId) {
+      throw new Error('User not initialized');
+    }
+    
+    const response = await invoke<ChatResponse>('chat_with_ai', {
+      request: {
+        user_id: userId,
+        message,
+        conversation_id: null,
+      },
+    });
+    
+    return response.answer;
   },
 };
 

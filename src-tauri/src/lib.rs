@@ -2,21 +2,33 @@ mod db;
 mod llm;
 mod rag;
 
-use db::{Database, CreateEntryRequest, UpdateEntryRequest, SearchRequest, JournalEntry};
-use llm::{ChatRequest, LlamaChat};
-use rag::{RagResponse, RagPipeline};
+use db::{Database, CreateEntryRequest, UpdateEntryRequest, SearchRequest, JournalEntry, ChatMessage};
 
 use tauri::{AppHandle, Manager, State};
 use std::sync::Mutex;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use reqwest;
+
+// Python RAG Service integration
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PythonChatRequest {
+    pub user_id: String,
+    pub message: String,
+    pub conversation_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PythonChatResponse {
+    pub answer: String,
+    pub sources: Vec<serde_json::Value>,
+    pub conversation_id: String,
+}
 
 // Global state for the application
 // Note: LlamaChat is not Send+Sync, so we'll handle it differently
 pub struct AppState {
     db: Mutex<Option<Database>>,
-    llm_ready: Mutex<bool>,
-    model_path: Mutex<Option<String>>,
-    // Persist the current user's id so DB operations use a valid foreign key
     user_id: Mutex<Option<String>>,
 }
 
@@ -24,8 +36,6 @@ impl AppState {
     fn new() -> Self {
         AppState {
             db: Mutex::new(None),
-            llm_ready: Mutex::new(false),
-            model_path: Mutex::new(None),
             user_id: Mutex::new(None),
         }
     }
@@ -42,61 +52,15 @@ async fn initialize_database(state: State<'_, AppState>, app: AppHandle) -> Resu
     let database = Database::new(&db_url).await.map_err(|e| e.to_string())?;
 
     // Create default user if none exists
-    let user_id = database.get_or_create_user("default@journal.app").await.map_err(|e| e.to_string())?;
+    let user_id = database
+        .get_or_create_user("default@journal.app")
+        .await
+        .map_err(|e| e.to_string())?;
     log::info!("Default user ID: {}", user_id);
 
-    // Store database in global state
     *state.db.lock().unwrap() = Some(database);
     *state.user_id.lock().unwrap() = Some(user_id);
 
-    Ok(())
-}
-
-#[tauri::command]
-async fn load_llm_model(state: State<'_, AppState>, model_path: String) -> Result<(), String> {
-    // For now, just store the model path and mark as ready
-    // In a real implementation, we'd validate the model file exists
-    if !std::path::Path::new(&model_path).exists() {
-        return Err(format!("Model file not found: {}", model_path));
-    }
-
-    *state.model_path.lock().unwrap() = Some(model_path.clone());
-    *state.llm_ready.lock().unwrap() = true;
-
-    log::info!("LLM model path set: {}", model_path);
-    Ok(())
-}
-
-#[tauri::command]
-async fn load_bundled_llm_model(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
-    // Look for a GGUF model under the app's bundled resources in models/
-    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let models_dir = resource_dir.join("models");
-
-    if !models_dir.exists() {
-        return Err("No bundled models found (missing resources/models).".to_string());
-    }
-
-    // Pick the first .gguf file
-    let mut found: Option<String> = None;
-    if let Ok(entries) = std::fs::read_dir(models_dir.clone()) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(ext) = path.extension() {
-                if ext == "gguf" {
-                    found = Some(path.to_string_lossy().to_string());
-                    break;
-                }
-            }
-        }
-    }
-
-    let model_path = found.ok_or("No .gguf model found in bundled resources/models".to_string())?;
-
-    *state.model_path.lock().unwrap() = Some(model_path.clone());
-    *state.llm_ready.lock().unwrap() = true;
-
-    log::info!("Bundled LLM model set: {}", model_path);
     Ok(())
 }
 
@@ -200,36 +164,35 @@ async fn search_entries(state: State<'_, AppState>, request: SearchRequest) -> R
 }
 
 #[tauri::command]
-async fn chat_with_ai(state: State<'_, AppState>, request: ChatRequest) -> Result<RagResponse, String> {
-    // Ensure DB is available
+async fn chat_with_ai(state: State<'_, AppState>, request: PythonChatRequest) -> Result<PythonChatResponse, String> {
     let db = {
         let db_guard = state.db.lock().unwrap();
         db_guard.as_ref().ok_or("Database not initialized")?.clone()
     };
 
-    // Ensure model path is set
-    let model_path = {
-        let model_path_guard = state.model_path.lock().unwrap();
-        model_path_guard.clone().ok_or("LLM not loaded yet. Please load a model first.")?
+    // Store user message
+    let _ = db.create_chat_message(&request.user_id, &request.message, true).await;
+
+    // Call Python RAG service
+    let client = reqwest::Client::new();
+    let python_request = PythonChatRequest {
+        user_id: request.user_id.clone(),
+        message: request.message.clone(),
+        conversation_id: request.conversation_id.clone(),
     };
 
-    // Resolve user id from state
-    let user_id = {
-        let uid_guard = state.user_id.lock().unwrap();
-        uid_guard.clone().ok_or("User not initialized")?
-    };
-
-    // Build LLM instance per request (not Send+Sync). It will load lazily.
-    let mut llm = LlamaChat::new().map_err(|e| e.to_string())?;
-    // Eagerly load to surface errors early
-    llm.load_model(&model_path).await.map_err(|e| e.to_string())?;
-
-    // Run a simple RAG pipeline using keyword search for now
-    let mut rag = RagPipeline::new(db, llm);
-    let response = rag
-        .query(&user_id, &request.message, 10)
+    let response = client
+        .post("http://127.0.0.1:8000/chat")
+        .json(&python_request)
+        .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Failed to connect to Python service: {}", e))?
+        .json::<PythonChatResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse Python response: {}", e))?;
+
+    // Store AI response
+    let _ = db.create_chat_message(&request.user_id, &response.answer, false).await;
 
     Ok(response)
 }
@@ -242,6 +205,22 @@ async fn get_system_info() -> Result<serde_json::Value, String> {
         "version": env!("CARGO_PKG_VERSION"),
     });
     Ok(info)
+}
+
+#[tauri::command]
+async fn get_chat_history(state: State<'_, AppState>) -> Result<Vec<ChatMessage>, String> {
+    let db = {
+        let db_guard = state.db.lock().unwrap();
+        db_guard.as_ref().ok_or("Database not initialized")?.clone()
+    };
+
+    let user_id = {
+        let uid_guard = state.user_id.lock().unwrap();
+        uid_guard.clone().ok_or("User not initialized")?
+    };
+
+    let messages = db.get_chat_messages(&user_id, Some(50)).await.map_err(|e| e.to_string())?;
+    Ok(messages)
 }
 
 // Simple greeting command for testing
@@ -273,7 +252,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             initialize_database,
-            load_llm_model,
             create_entry,
             get_entries,
             get_entry,
@@ -281,6 +259,7 @@ pub fn run() {
             delete_entry,
             search_entries,
             chat_with_ai,
+            get_chat_history,
             get_system_info
         ])
         .run(tauri::generate_context!())

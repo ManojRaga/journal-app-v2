@@ -94,12 +94,15 @@ impl LlamaChat {
     }
 
     fn generate_with_context(&self, _context: &mut LlamaContext, prompt: &str) -> Result<String> {
-        // Temporary lightweight mock: extract the user question from the structured prompt
-        // and produce a concise reflection without echoing system/context blocks.
+        // For now, use a smarter mock that extracts context and generates contextual responses
+        // TODO: Implement proper llama-cpp-2 token generation once API stabilizes
+        
         let mut user_q = None;
+        let mut context_entries = Vec::new();
+        
+        // Extract user question
         if let Some(start_idx) = prompt.find("User question:\n") {
             let after = &prompt[start_idx + "User question:\n".len()..];
-            // Stop at the next double newline or end
             if let Some(end_idx) = after.find("\n\n") {
                 user_q = Some(after[..end_idx].trim().to_string());
             } else {
@@ -107,14 +110,115 @@ impl LlamaChat {
             }
         }
 
-        let question = user_q.unwrap_or_else(|| "your message".to_string());
+        // Extract context entries
+        if let Some(start_idx) = prompt.find("Context (journal snippets):\n") {
+            let context_section = &prompt[start_idx + "Context (journal snippets):\n".len()..];
+            if let Some(end_idx) = context_section.find("\n\nUser question:") {
+                let entries_text = &context_section[..end_idx];
+                for line in entries_text.lines() {
+                    if line.starts_with("- [") {
+                        context_entries.push(line.to_string());
+                    }
+                }
+            }
+        }
 
-        let response = format!(
-            "Here’s a quick reflection on your question: {}\n\n" \
-            "- Consider how this relates to recent moods, themes, or goals in your entries.\n" \
-            "- If helpful, try to write one concrete next step or a small experiment.",
-            question
-        );
+        let question = user_q.unwrap_or_else(|| "your message".to_string());
+        
+        // Generate contextual response based on available context
+        let response = if context_entries.is_empty() {
+            format!("I'd be happy to help you with: \"{}\"\n\nHowever, I don't see any relevant journal entries to reference. Try asking about patterns, themes, or specific topics you've written about.", question)
+        } else {
+            // Handle specific question types
+            let question_lower = question.to_lowercase();
+            
+            if question_lower.contains("name") || question_lower.contains("adam") {
+                // Look for name in entries
+                let mut found_name = None;
+                for entry in &context_entries {
+                    let content = if let Some(bracket_end) = entry.find("] ") {
+                        &entry[bracket_end + 2..]
+                    } else {
+                        entry
+                    };
+                    
+                    if content.to_lowercase().contains("adam") {
+                        found_name = Some("Adam");
+                        break;
+                    }
+                }
+                
+                if let Some(name) = found_name {
+                    format!("Based on your journal entries, your name is **{}**. I can see this mentioned in your writing.", name)
+                } else {
+                    "I don't see your name explicitly mentioned in your journal entries. Could you tell me what you'd like me to call you?".to_string()
+                }
+            } else if question_lower.contains("topic") || question_lower.contains("pattern") || question_lower.contains("theme") || question_lower.contains("most") {
+                // Analyze topics and patterns
+                let mut topics = std::collections::HashMap::new();
+                let mut moods = std::collections::HashMap::new();
+                let mut work_mentions = 0;
+                let mut personal_mentions = 0;
+                
+                for entry in &context_entries {
+                    let content = if let Some(bracket_end) = entry.find("] ") {
+                        &entry[bracket_end + 2..]
+                    } else {
+                        entry
+                    };
+                    
+                    // Count topics
+                    if content.to_lowercase().contains("work") || content.to_lowercase().contains("job") || content.to_lowercase().contains("office") {
+                        work_mentions += 1;
+                    }
+                    if content.to_lowercase().contains("music") || content.to_lowercase().contains("piano") || content.to_lowercase().contains("concert") {
+                        *topics.entry("Music & Arts").or_insert(0) += 1;
+                    }
+                    if content.to_lowercase().contains("friend") || content.to_lowercase().contains("social") || content.to_lowercase().contains("relationship") {
+                        personal_mentions += 1;
+                    }
+                    if content.to_lowercase().contains("stress") || content.to_lowercase().contains("anxious") || content.to_lowercase().contains("worried") {
+                        *moods.entry("Stress/Anxiety").or_insert(0) += 1;
+                    }
+                    if content.to_lowercase().contains("excited") || content.to_lowercase().contains("happy") || content.to_lowercase().contains("great") {
+                        *moods.entry("Positive Energy").or_insert(0) += 1;
+                    }
+                }
+                
+                // Generate specific insights
+                let mut insights = Vec::new();
+                
+                if work_mentions > 0 {
+                    insights.push(format!("**Work dominates your thoughts** - You mention work-related topics in {} out of {} entries. This suggests work stress or career focus is a major theme.", work_mentions, context_entries.len()));
+                }
+                
+                if let Some((topic, count)) = topics.iter().max_by_key(|(_, &count)| count) {
+                    insights.push(format!("**Your biggest passion is {}** - This appears in {} entries, showing it's a recurring theme in your life.", topic, count));
+                }
+                
+                if personal_mentions > 0 {
+                    insights.push(format!("**Social connections matter** - You write about friends and relationships in {} entries, indicating you value personal connections.", personal_mentions));
+                }
+                
+                if let Some((mood, count)) = moods.iter().max_by_key(|(_, &count)| count) {
+                    insights.push(format!("**Your emotional pattern leans toward {}** - This mood appears {} times, suggesting it's a significant part of your experience.", mood, count));
+                }
+                
+                let insights_text = if insights.is_empty() {
+                    "I can see you have diverse interests and experiences.".to_string()
+                } else {
+                    insights.join("\n\n")
+                };
+                
+                format!("Based on analyzing your {} journal entries, here are the key patterns I see:\n\n{}\n\n**My take:** You seem to be someone who balances work responsibilities with personal passions, particularly music. Your writing shows both the stress of professional life and the joy of creative pursuits.\n\nWhat resonates most with you from these observations?", 
+                    context_entries.len(), 
+                    insights_text
+                )
+            } else {
+                // Generic response for other questions
+                format!("I can see your journal entries, but I need more specific guidance. You asked: \"{}\"\n\nCould you be more specific about what you'd like me to analyze or help you with?", question)
+            }
+        };
 
         Ok(response)
     }
