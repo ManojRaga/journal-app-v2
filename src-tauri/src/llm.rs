@@ -94,27 +94,29 @@ impl LlamaChat {
     }
 
     fn generate_with_context(&self, _context: &mut LlamaContext, prompt: &str) -> Result<String> {
-        // For now, we'll return a contextual mock response based on the model being loaded
-        // In a full implementation, this would:
-        // 1. Tokenize the prompt using the model's tokenizer
-        // 2. Run inference through the context
-        // 3. Sample tokens and decode them back to text
+        // Temporary lightweight mock: extract the user question from the structured prompt
+        // and produce a concise reflection without echoing system/context blocks.
+        let mut user_q = None;
+        if let Some(start_idx) = prompt.find("User question:\n") {
+            let after = &prompt[start_idx + "User question:\n".len()..];
+            // Stop at the next double newline or end
+            if let Some(end_idx) = after.find("\n\n") {
+                user_q = Some(after[..end_idx].trim().to_string());
+            } else {
+                user_q = Some(after.trim().to_string());
+            }
+        }
 
-        let model_name = self.model_path.as_ref()
-            .and_then(|p| Path::new(p).file_name())
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
+        let question = user_q.unwrap_or_else(|| "your message".to_string());
 
-        let contextual_response = format!(
-            "Based on your journal entries and using model '{}', I can help you reflect on: '{}'. \
-            This response demonstrates that the LLM infrastructure is working and can be extended \
-            to provide meaningful insights about your thoughts and experiences. \
-            The model is loaded and ready to process your journal content contextually.",
-            model_name,
-            prompt.chars().take(100).collect::<String>()
+        let response = format!(
+            "Here’s a quick reflection on your question: {}\n\n" \
+            "- Consider how this relates to recent moods, themes, or goals in your entries.\n" \
+            "- If helpful, try to write one concrete next step or a small experiment.",
+            question
         );
 
-        Ok(contextual_response)
+        Ok(response)
     }
 
     pub async fn generate_embedding(&mut self, text: &str) -> Result<Vec<f32>> {
@@ -151,21 +153,40 @@ impl Default for LlamaChat {
 
 // Utility functions for prompt construction
 pub fn build_journal_prompt(question: &str, context_entries: &[(String, String, String)]) -> String {
+    // Build a clean, structured prompt that keeps system guidance separate from the user question
+    // and prevents the model from echoing system text.
     let mut prompt = String::new();
 
-    prompt.push_str("You are a thoughtful AI assistant helping with journal reflection. ");
-    prompt.push_str("You have access to the user's past journal entries to provide context and insights. ");
-    prompt.push_str("Be empathetic, insightful, and help the user reflect on their thoughts and experiences.\n\n");
+    // System role
+    let system = build_system_prompt();
+    prompt.push_str("System:\n");
+    prompt.push_str(&system);
+    prompt.push_str("\n\n");
 
+    // Context block with truncated content to reduce prompt bloat
     if !context_entries.is_empty() {
-        prompt.push_str("Relevant journal entries:\n");
-        for (date, title, content) in context_entries {
-            prompt.push_str(&format!("- [{}] {}: {}\n", date, title, content));
+        prompt.push_str("Context (journal snippets):\n");
+        for (date, title, content) in context_entries.iter() {
+            // Truncate each snippet to ~280 chars to avoid overwhelming the model
+            let snippet: String = if content.len() > 280 {
+                let mut s = content[..280].to_string();
+                s.push_str("…");
+                s
+            } else {
+                content.clone()
+            };
+            prompt.push_str(&format!("- [{}] {} — {}\n", date, title, snippet.replace('\n', " ")));
         }
         prompt.push_str("\n");
     }
 
-    prompt.push_str(&format!("User: {}\n\nAssistant: ", question));
+    // Clear user instruction. Keep it last so the model focuses on answering it, not reiterating system text.
+    prompt.push_str("User question:\n");
+    prompt.push_str(question);
+    prompt.push_str("\n\n");
+
+    // Final assistant cue to answer directly.
+    prompt.push_str("Assistant (answer the question concisely, referencing the context when useful):\n");
 
     prompt
 }

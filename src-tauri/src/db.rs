@@ -200,6 +200,93 @@ impl Database {
         Ok(())
     }
 
+    // --- Embeddings helpers ---
+    fn serialize_embedding(embedding: &[f32]) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(embedding.len() * 4);
+        for v in embedding {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        bytes
+    }
+
+    fn deserialize_embedding(blob: &[u8]) -> Vec<f32> {
+        let mut out = Vec::with_capacity(blob.len() / 4);
+        let mut i = 0;
+        while i + 4 <= blob.len() {
+            let arr = [blob[i], blob[i + 1], blob[i + 2], blob[i + 3]];
+            out.push(f32::from_le_bytes(arr));
+            i += 4;
+        }
+        out
+    }
+
+    pub async fn upsert_entry_embedding(&self, entry_id: &str, embedding: &[f32]) -> Result<()> {
+        let blob = Self::serialize_embedding(embedding);
+        let now = Utc::now().to_rfc3339();
+
+        // Try update first; if no row, insert
+        let updated = sqlx::query(
+            "UPDATE entry_embeddings SET embedding = ?, created_at = ? WHERE entry_id = ?"
+        )
+        .bind(&blob)
+        .bind(&now)
+        .bind(entry_id)
+        .execute(&self.pool)
+        .await?;
+
+        if updated.rows_affected() == 0 {
+            let id = Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO entry_embeddings (id, entry_id, embedding, created_at) VALUES (?, ?, ?, ?)"
+            )
+            .bind(&id)
+            .bind(entry_id)
+            .bind(&blob)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_entry_embeddings_for_user(&self, user_id: &str) -> Result<Vec<(String, Vec<f32>)>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT ee.entry_id as entry_id, ee.embedding as embedding
+            FROM entry_embeddings ee
+            INNER JOIN entries e ON e.id = ee.entry_id
+            WHERE e.user_id = ?
+            "#
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            let entry_id: String = row.try_get("entry_id")?;
+            let blob: Vec<u8> = row.try_get("embedding")?;
+            out.push((entry_id, Self::deserialize_embedding(&blob)));
+        }
+        Ok(out)
+    }
+
+    pub async fn get_entries_minimal(&self, user_id: &str) -> Result<Vec<JournalEntry>> {
+        let rows = sqlx::query(
+            "SELECT id, user_id, title, body, created_at, updated_at, mood, tags FROM entries WHERE user_id = ?"
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut entries = Vec::new();
+        for row in rows {
+            entries.push(self.row_to_entry(row)?);
+        }
+        Ok(entries)
+    }
+
     pub async fn create_user(&self, email: &str) -> Result<String> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
@@ -377,18 +464,20 @@ impl Database {
     pub async fn search_entries(&self, user_id: &str, request: SearchRequest) -> Result<Vec<JournalEntry>> {
         let limit = request.limit.unwrap_or(50);
 
+        // Use alias 'fts' in MATCH, and order by bm25 score. Quote the query as a phrase to avoid FTS syntax issues with punctuation.
+        let phrase_query = format!("\"{}\"", request.query.replace('"', "\""));
         let rows = sqlx::query(
             r#"
             SELECT e.id, e.user_id, e.title, e.body, e.created_at, e.updated_at, e.mood, e.tags
             FROM entries e
             INNER JOIN entry_fts fts ON e.id = fts.id
             WHERE e.user_id = ? AND entry_fts MATCH ?
-            ORDER BY rank
+            ORDER BY bm25(entry_fts)
             LIMIT ?
             "#
         )
         .bind(user_id)
-        .bind(&request.query)
+        .bind(&phrase_query)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;

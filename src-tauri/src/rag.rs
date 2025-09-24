@@ -91,14 +91,38 @@ impl RagPipeline {
     }
 
     async fn semantic_search(&self, _user_id: &str, _query: &str, _limit: usize) -> Result<Vec<RetrievedDocument>> {
-        // Placeholder for semantic search
-        // In a full implementation, this would:
-        // 1. Generate embedding for the query
-        // 2. Search for similar embeddings in the database
-        // 3. Return ranked results by cosine similarity
+        // Generate query embedding (placeholder currently uses LLM's embedding method)
+        let q_emb = self.llm.generate_embedding(_query).await?;
 
-        // For now, return empty results
-        Ok(Vec::new())
+        // Load all entry embeddings for the user
+        let all = self.db.get_entry_embeddings_for_user(_user_id).await?;
+
+        // Compute cosine similarity and pick top-k
+        let mut scored: Vec<(String, f32)> = Vec::new();
+        for (entry_id, emb) in all {
+            let sim = cosine_similarity(&q_emb, &emb);
+            scored.push((entry_id, sim));
+        }
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let took = scored.into_iter().take(_limit).collect::<Vec<_>>();
+
+        // Map to RetrievedDocument using minimal entry fetch
+        let mut results = Vec::new();
+        let entries = self.db.get_entries_minimal(_user_id).await?;
+        let map: std::collections::HashMap<_, _> = entries.into_iter().map(|e| (e.id.clone(), e)).collect();
+        for (entry_id, score) in took {
+            if let Some(e) = map.get(&entry_id) {
+                results.push(RetrievedDocument {
+                    entry_id: e.id.clone(),
+                    title: e.title.clone(),
+                    content: e.body.clone(),
+                    date: e.created_at.format("%Y-%m-%d").to_string(),
+                    score,
+                    chunk_id: None,
+                });
+            }
+        }
+        Ok(results)
     }
 
     fn combine_and_rerank(&self, keyword_results: Vec<RetrievedDocument>, semantic_results: Vec<RetrievedDocument>, max_results: usize) -> Result<Vec<RetrievedDocument>> {
@@ -186,4 +210,18 @@ impl RagPipeline {
             intersection as f32 / union as f32
         }
     }
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.is_empty() || b.is_empty() || a.len() != b.len() { return 0.0; }
+    let mut dot = 0.0f32;
+    let mut na = 0.0f32;
+    let mut nb = 0.0f32;
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    if na == 0.0 || nb == 0.0 { return 0.0; }
+    dot / (na.sqrt() * nb.sqrt())
 }

@@ -51,7 +51,7 @@ export function Chat() {
       console.error('Failed to send message:', error);
       const errorMessage = {
         id: `error-${Date.now()}`,
-        content: 'I apologize, but I encountered an error. Please try again.',
+        content: `Error: ${error instanceof Error ? error.message : String(error)}`,
         isUser: false,
         timestamp: new Date().toISOString(),
       };

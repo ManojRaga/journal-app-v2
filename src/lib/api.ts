@@ -64,7 +64,8 @@ export const journalApi = {
 // AI Chat API
 export const chatApi = {
   async sendMessage(request: ChatRequest): Promise<ChatResponse> {
-    return await invoke('chat_with_ai', { request });
+    // Map camelCase to snake_case expected by Rust
+    return await invoke('chat_with_ai', { request: { message: request.message, user_id: request.userId } });
   },
 
   async streamMessage(request: ChatRequest): Promise<void> {
